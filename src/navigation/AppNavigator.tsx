@@ -1,11 +1,13 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useAuth } from '@/auth/AuthContext';
 import { Celebration, FAB, TabBar } from '@/components';
 import { initialState } from '@/data/seed';
 import {
   Achievements,
+  Auth,
   CreateGoal,
   GoalDetail,
   Habits,
@@ -20,12 +22,27 @@ import type { AppState, Route, TabId } from '@/types';
 export const AppNavigator = () => {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
+  const { status, user, isFirstSession, completeWelcome } = useAuth();
 
   const [state, setState] = useState<AppState>(initialState);
   const [route, setRoute] = useState<Route>('home');
   const [tab, setTab] = useState<TabId>('home');
   const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
   const [celebrate, setCelebrate] = useState(false);
+
+  useEffect(() => {
+    if (status === 'authenticated' && user) {
+      setState((prev) => ({ ...prev, name: user.displayName }));
+    }
+  }, [status, user]);
+
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      setRoute('home');
+      setTab('home');
+      setSelectedGoalId(null);
+    }
+  }, [status]);
 
   const dispatch = (action: { type: 'toggle'; key: string }) => {
     if (action.type === 'toggle') {
@@ -78,6 +95,29 @@ export const AppNavigator = () => {
   };
 
   const currentGoal = state.goals.find((g) => g.id === selectedGoalId);
+
+  if (status === 'unauthenticated') {
+    return (
+      <SafeAreaView
+        edges={['top', 'left', 'right', 'bottom']}
+        style={{ flex: 1, backgroundColor: theme.bg[0] }}
+      >
+        <Auth />
+      </SafeAreaView>
+    );
+  }
+
+  if (isFirstSession) {
+    return (
+      <SafeAreaView
+        edges={['top', 'left', 'right', 'bottom']}
+        style={{ flex: 1, backgroundColor: theme.bg[0] }}
+      >
+        <Onboarding onDone={completeWelcome} />
+      </SafeAreaView>
+    );
+  }
+
   const showTabs = ['home', 'habits', 'rank', 'achievements', 'profile'].includes(
     route,
   );
