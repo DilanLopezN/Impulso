@@ -7,6 +7,7 @@ import React, {
   type ReactNode,
 } from 'react';
 
+import { accountService, type UserDataExport } from '@/services/account.service';
 import {
   authService,
   type AuthResult,
@@ -15,6 +16,8 @@ import {
   type PublicUser,
   type SignupPayload,
 } from '@/services/auth.service';
+import { passwordService } from '@/services/password.service';
+import { sessionsService, type SessionView } from '@/services/sessions.service';
 
 export type AuthStatus = 'unauthenticated' | 'authenticated';
 
@@ -27,12 +30,29 @@ type AuthContextValue = {
   signup: (payload: SignupPayload) => Promise<AuthResult>;
   logout: () => Promise<void>;
   completeWelcome: () => void;
+  // Password recovery
+  requestPasswordReset: (email: string) => Promise<void>;
+  resetPassword: (token: string, newPassword: string) => Promise<void>;
+  // Session management
+  listSessions: () => Promise<SessionView[]>;
+  revokeSession: (sessionId: string) => Promise<void>;
+  revokeOtherSessions: () => Promise<number>;
+  // LGPD
+  exportMyData: () => Promise<UserDataExport>;
+  deleteMyAccount: (password: string) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 type AuthProviderProps = {
   children: ReactNode;
+};
+
+const requireAccess = (tokens: AuthTokens | null): string => {
+  if (!tokens?.accessToken) {
+    throw new Error('Operação requer usuário autenticado.');
+  }
+  return tokens.accessToken;
 };
 
 export const AuthProvider = ({ children }: AuthProviderProps) => {
@@ -56,11 +76,15 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     return result;
   }, []);
 
-  const logout = useCallback(async () => {
-    const refresh = tokens?.refreshToken;
+  const clearLocal = useCallback(() => {
     setUser(null);
     setTokens(null);
     setIsFirstSession(false);
+  }, []);
+
+  const logout = useCallback(async () => {
+    const refresh = tokens?.refreshToken;
+    clearLocal();
     if (refresh) {
       try {
         await authService.logout(refresh);
@@ -68,11 +92,53 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         // best-effort: ignore errors from server-side logout
       }
     }
-  }, [tokens]);
+  }, [tokens, clearLocal]);
 
   const completeWelcome = useCallback(() => {
     setIsFirstSession(false);
   }, []);
+
+  const requestPasswordReset = useCallback(async (email: string) => {
+    await passwordService.forgot(email);
+  }, []);
+
+  const resetPassword = useCallback(
+    async (token: string, newPassword: string) => {
+      await passwordService.reset(token, newPassword);
+    },
+    [],
+  );
+
+  const listSessions = useCallback(
+    () => sessionsService.list(requireAccess(tokens)),
+    [tokens],
+  );
+
+  const revokeSession = useCallback(
+    (sessionId: string) =>
+      sessionsService.revokeOne(requireAccess(tokens), sessionId),
+    [tokens],
+  );
+
+  const revokeOtherSessions = useCallback(async () => {
+    const result = await sessionsService.revokeOthers(requireAccess(tokens));
+    return result.revoked;
+  }, [tokens]);
+
+  const exportMyData = useCallback(
+    () => accountService.exportData(requireAccess(tokens)),
+    [tokens],
+  );
+
+  const deleteMyAccount = useCallback(
+    async (password: string) => {
+      const access = requireAccess(tokens);
+      await accountService.deleteAccount(access, password);
+      // Server already revoked everything; clear local state too.
+      clearLocal();
+    },
+    [tokens, clearLocal],
+  );
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -84,8 +150,30 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       signup,
       logout,
       completeWelcome,
+      requestPasswordReset,
+      resetPassword,
+      listSessions,
+      revokeSession,
+      revokeOtherSessions,
+      exportMyData,
+      deleteMyAccount,
     }),
-    [user, tokens, isFirstSession, login, signup, logout, completeWelcome],
+    [
+      user,
+      tokens,
+      isFirstSession,
+      login,
+      signup,
+      logout,
+      completeWelcome,
+      requestPasswordReset,
+      resetPassword,
+      listSessions,
+      revokeSession,
+      revokeOtherSessions,
+      exportMyData,
+      deleteMyAccount,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

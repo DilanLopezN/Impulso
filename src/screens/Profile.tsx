@@ -20,9 +20,15 @@ type ProfileProps = {
   state: AppState;
   onReset: () => void;
   onOpenOnboarding: () => void;
+  onOpenSecurity: () => void;
 };
 
-export const Profile = ({ state, onReset, onOpenOnboarding }: ProfileProps) => {
+export const Profile = ({
+  state,
+  onReset,
+  onOpenOnboarding,
+  onOpenSecurity,
+}: ProfileProps) => {
   const { theme } = useTheme();
   const { logout } = useAuth();
   const { name, xp, level, xpToNext, streak } = state;
@@ -247,6 +253,11 @@ export const Profile = ({ state, onReset, onOpenOnboarding }: ProfileProps) => {
           />
           <MenuRow
             icon="lock"
+            label="Conta e segurança"
+            onPress={onOpenSecurity}
+          />
+          <MenuRow
+            icon="close"
             label="Sair"
             onPress={() => {
               void logout();

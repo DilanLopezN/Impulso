@@ -89,4 +89,4 @@ export type AppState = {
 };
 
 export type TabId = 'home' | 'habits' | 'rank' | 'achievements' | 'profile';
-export type Route = TabId | 'onboarding' | 'goal' | 'create';
+export type Route = TabId | 'onboarding' | 'goal' | 'create' | 'security';

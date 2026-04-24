@@ -36,7 +36,7 @@ type SocialProvider = 'google' | 'linkedin' | 'github';
 
 export const Auth = () => {
   const { theme } = useTheme();
-  const { login, signup } = useAuth();
+  const { login, signup, requestPasswordReset } = useAuth();
 
   const [mode, setMode] = useState<Mode>('login');
   const [name, setName] = useState('');
@@ -46,6 +46,8 @@ export const Auth = () => {
   const [loadingProvider, setLoadingProvider] =
     useState<SocialProvider | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
+  const [forgotting, setForgotting] = useState(false);
 
   const isLogin = mode === 'login';
 
@@ -83,6 +85,27 @@ export const Auth = () => {
       'Login social ainda não está disponível. Use e-mail e senha por enquanto.',
     );
     setTimeout(() => setLoadingProvider(null), 600);
+  };
+
+  const handleForgot = async () => {
+    setError(null);
+    setInfo(null);
+    const trimmed = email.trim();
+    if (!trimmed.includes('@') || !trimmed.includes('.')) {
+      setError('Informe um e-mail válido para receber as instruções.');
+      return;
+    }
+    setForgotting(true);
+    try {
+      await requestPasswordReset(trimmed);
+      setInfo(
+        'Se houver uma conta para este e-mail, enviaremos as instruções de recuperação em instantes.',
+      );
+    } catch (err) {
+      setError(humanizeError(err, true));
+    } finally {
+      setForgotting(false);
+    }
   };
 
   return (
@@ -191,22 +214,40 @@ export const Auth = () => {
           </View>
         ) : null}
 
+        {info ? (
+          <View
+            style={{
+              marginTop: 14,
+              padding: 12,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: theme.accent,
+              backgroundColor: 'rgba(120, 220, 180, 0.08)',
+            }}
+          >
+            <Small style={{ color: theme.accent }}>{info}</Small>
+          </View>
+        ) : null}
+
         {isLogin ? (
           <Pressable
             style={{ alignSelf: 'flex-end', marginTop: 10 }}
-            onPress={() =>
-              setError('Recuperação de senha ainda não está implementada.')
-            }
+            onPress={handleForgot}
+            disabled={forgotting}
           >
-            <Text
-              style={{
-                fontFamily: 'Geist_600SemiBold',
-                fontSize: 12,
-                color: theme.accent,
-              }}
-            >
-              Esqueceu a senha?
-            </Text>
+            {forgotting ? (
+              <ActivityIndicator size="small" color={theme.accent} />
+            ) : (
+              <Text
+                style={{
+                  fontFamily: 'Geist_600SemiBold',
+                  fontSize: 12,
+                  color: theme.accent,
+                }}
+              >
+                Esqueceu a senha?
+              </Text>
+            )}
           </Pressable>
         ) : null}
 

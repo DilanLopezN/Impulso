@@ -6,6 +6,7 @@ import { useAuth } from '@/auth/AuthContext';
 import { Celebration, FAB, TabBar } from '@/components';
 import { initialState } from '@/data/seed';
 import {
+  AccountSecurity,
   Achievements,
   Auth,
   CreateGoal,
@@ -164,9 +165,12 @@ export const AppNavigator = () => {
           <Profile
             state={state}
             onOpenOnboarding={() => setRoute('onboarding')}
+            onOpenSecurity={() => setRoute('security')}
             onReset={() => setState(initialState)}
           />
         );
+      case 'security':
+        return <AccountSecurity onBack={() => setRoute('profile')} />;
       default:
         return null;
     }

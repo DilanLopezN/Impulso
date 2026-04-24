@@ -9,6 +9,132 @@ Formato: uma seção por entrega, do mais recente para o mais antigo.
 
 ---
 
+## 2026-04-24 — Sessões por dispositivo, recuperação de senha e LGPD
+
+Branch: `claude/auth-session-management-fX3bD`
+
+### Escopo
+
+Fechamento dos itens pendentes de §2.1 (Usuário e autenticação) do
+`README_BACKEND.md`:
+
+- Listagem e revogação de sessões ativas por dispositivo.
+- Recuperação de senha (token de uso único, hash SHA-256, TTL 30 min).
+- LGPD: exportação dos dados do usuário (JSON) e exclusão da conta com
+  soft delete + anonimização + revogação de todas as sessões.
+
+Também: integração completa do `users/auth` no app mobile com URLs do
+backend lidas de `.env` (`EXPO_PUBLIC_API_URL` para NestJS,
+`EXPO_PUBLIC_WORKERS_URL` para futuros workers Go), o que permite trocar
+o destino dinamicamente para testar com `ngrok` ou IP de LAN sem mexer no
+código.
+
+### Prisma — novo model
+
+`server/api/prisma/schemas/auth.prisma`:
+
+- `PasswordResetToken` — `userId`, `tokenHash` (SHA-256), `expiresAt`,
+  `usedAt`, `createdAt`, `ipAddress`, `userAgent`. Index por `userId`.
+
+`schemas/user.prisma` recebe a relação `passwordResetTokens`.
+
+### NestJS — módulos
+
+```
+server/api/src/modules/
+├── sessions/                          # NOVO
+│   ├── sessions.module.ts
+│   ├── sessions.controller.ts         # GET/DELETE /sessions
+│   ├── sessions.service.ts
+│   └── sessions.types.ts
+├── auth/
+│   ├── auth.controller.ts             # +POST /auth/password/{forgot,reset}
+│   ├── auth.service.ts                # +issuePasswordReset, +resetPassword,
+│   │                                   # +revokeAllSessions
+│   └── dto/{forgot-password,reset-password}.dto.ts
+└── users/
+    ├── users.controller.ts            # +GET /users/me/export, +DELETE /users/me
+    ├── users.service.ts               # +exportData, +deleteAccount
+    ├── users.types.ts                 # UserDataExport
+    └── dto/delete-account.dto.ts
+```
+
+### Endpoints novos
+
+| Método | Rota                          | Descrição                                                                                  |
+| ------ | ----------------------------- | ------------------------------------------------------------------------------------------ |
+| GET    | `/sessions`                   | Lista sessões ativas do usuário; marca a corrente com `current=true`.                      |
+| DELETE | `/sessions/:id`               | Revoga sessão específica (e seus refresh tokens).                                          |
+| DELETE | `/sessions/others`            | Revoga todas exceto a atual; retorna `{ revoked: number }`.                                |
+| POST   | `/auth/password/forgot`       | Sempre 202; em dev o token vai para os logs.                                               |
+| POST   | `/auth/password/reset`        | Token de uso único (TTL 30 min). Em sucesso revoga **todas** as sessões.                   |
+| GET    | `/users/me/export`            | Snapshot JSON (`schemaVersion: 1`) com identidade + sessões. Pronto para LGPD.             |
+| DELETE | `/users/me`                   | Exige senha no body. Soft delete (preenche `deletedAt`), anonimiza email/nome/avatar e revoga sessões. |
+
+### Regras críticas implementadas
+
+- **Recuperação de senha**: o servidor armazena apenas o hash SHA-256 do
+  token (igual ao tratamento de refresh tokens). Resposta de
+  `/forgot` é estruturalmente idêntica para e-mail existente ou não, para
+  não vazar a existência da conta.
+- **Reset bem sucedido revoga tudo**: garante que se o e-mail foi
+  comprometido, atacante perde os tokens em curso.
+- **Exclusão de conta**: confirmação por senha + soft delete preservando
+  o id (mantém integridade futura com `goals`, `xp_ledger`, etc.) e
+  anonimizando PII no momento do delete. `passwordHash` é trocado por
+  string que `bcrypt.compare` nunca vai aceitar.
+- **Revogação de sessão**: rota `/sessions/others` é segura por padrão
+  (não permite encerrar a sessão atual via essa chamada, evitando
+  self-lockout acidental). Encerrar a atual continua sendo via logout.
+
+### Front-end
+
+- `.env.example` (raiz) com `EXPO_PUBLIC_API_URL` e `EXPO_PUBLIC_WORKERS_URL`.
+- `src/services/api.ts` agora exporta `WORKERS_BASE_URL` e exige leitura via
+  `process.env.EXPO_PUBLIC_*` (com fallback de dev).
+- Novos serviços: `password.service.ts`, `sessions.service.ts`,
+  `account.service.ts`.
+- `AuthContext` expõe `requestPasswordReset`, `resetPassword`,
+  `listSessions`, `revokeSession`, `revokeOtherSessions`, `exportMyData`,
+  `deleteMyAccount`.
+- Tela `Auth.tsx`: o link "Esqueceu a senha?" agora chama o backend de
+  verdade.
+- Nova tela `AccountSecurity.tsx` (rota `security`) com lista de sessões,
+  exportação via `Share` e exclusão de conta com modal de confirmação.
+- Profile recebe item de menu "Conta e segurança" para abrir a tela.
+
+### Contratos
+
+`server/contracts/openapi.yaml` ganhou:
+
+- Tag `sessions`.
+- Caminhos: `/auth/password/forgot`, `/auth/password/reset`, `/sessions`,
+  `/sessions/{id}`, `/sessions/others`, `/users/me/export`,
+  `DELETE /users/me`.
+- Schemas: `ForgotPasswordRequest`, `ResetPasswordRequest`,
+  `DeleteAccountRequest`, `Session`, `UserDataExport`.
+
+### Itens marcados no `README_BACKEND.md`
+
+- §2.1 — `Gestão de sessão por dispositivo` ✅
+- §2.1 — `Recuperação de senha` ✅
+- §2.1 — `Exclusão e exportação de dados (LGPD)` ✅
+- §5.1 — Módulos `users` e `sessions` ✅
+- §7 — Modelo `password_reset_tokens` ✅
+- §8.1 — endpoints de password reset, sessions e users LGPD ✅
+
+### Pendências conscientes (não entregues nesta rodada)
+
+- Envio real de e-mail no `/auth/password/forgot` (hoje só log em dev).
+  Próximo passo: integrar provider (SES, Postmark, Resend) e template.
+- Tela mobile específica para colar/abrir o token de reset (deep link).
+  `useAuth().resetPassword(token, newPassword)` já existe no app.
+- Migration SQL para `password_reset_tokens` — schema Prisma pronto, falta
+  rodar `prisma migrate dev --name auth_session_management` contra Postgres.
+- Testes automatizados (unit + e2e) dos novos fluxos.
+
+---
+
 ## 2026-04-24 — Autenticação e usuários com Prisma
 
 Branch: `claude/implement-auth-prisma-GevTa`
