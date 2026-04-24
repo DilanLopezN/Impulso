@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Celebration, FAB, PhoneStatusBar, TabBar } from '@/components';
+import { Celebration, FAB, TabBar } from '@/components';
 import { initialState } from '@/data/seed';
 import {
   Achievements,
@@ -134,10 +134,9 @@ export const AppNavigator = () => {
 
   return (
     <SafeAreaView
-      edges={['left', 'right']}
+      edges={['top', 'left', 'right']}
       style={{ flex: 1, backgroundColor: theme.bg[0] }}
     >
-      <PhoneStatusBar topInset={insets.top} />
       <View style={{ flex: 1 }}>{renderScreen()}</View>
 
       {showTabs ? (

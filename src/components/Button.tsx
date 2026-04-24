@@ -49,7 +49,7 @@ export const Button = ({
           justifyContent: 'center',
           gap: 8,
           opacity: disabled ? 0.4 : pressed ? 0.92 : 1,
-          transform: pressed ? [{ scale: 0.97 }] : undefined,
+          ...(pressed ? { transform: [{ scale: 0.97 }] } : {}),
           ...(isPrimary
             ? {
                 backgroundColor: backgroundColor ?? theme.accent,
