@@ -12,6 +12,7 @@ import {
   ProgressRing,
   Small,
 } from '@/components';
+import { useAuth } from '@/auth/AuthContext';
 import { useTheme } from '@/theme/ThemeContext';
 import type { AppState, IconName } from '@/types';
 
@@ -23,6 +24,7 @@ type ProfileProps = {
 
 export const Profile = ({ state, onReset, onOpenOnboarding }: ProfileProps) => {
   const { theme } = useTheme();
+  const { logout } = useAuth();
   const { name, xp, level, xpToNext, streak } = state;
 
   const stats = [
@@ -242,6 +244,13 @@ export const Profile = ({ state, onReset, onOpenOnboarding }: ProfileProps) => {
             icon="sparkle"
             label="Revisitar onboarding"
             onPress={onOpenOnboarding}
+          />
+          <MenuRow
+            icon="lock"
+            label="Sair"
+            onPress={() => {
+              void logout();
+            }}
             last
           />
         </Card>

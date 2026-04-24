@@ -15,6 +15,7 @@ import {
 } from '@expo-google-fonts/geist-mono';
 import { View } from 'react-native';
 
+import { AuthProvider } from '@/auth/AuthContext';
 import { AppNavigator } from '@/navigation/AppNavigator';
 import { ThemeProvider } from '@/theme/ThemeContext';
 
@@ -36,8 +37,10 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <ThemeProvider initialMode="dark" initialAccent={180}>
-        <StatusBar style="light" />
-        <AppNavigator />
+        <AuthProvider>
+          <StatusBar style="light" />
+          <AppNavigator />
+        </AuthProvider>
       </ThemeProvider>
     </SafeAreaProvider>
   );
