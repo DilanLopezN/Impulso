@@ -1,0 +1,19 @@
+// Root Prisma schema file.
+//
+// This project uses the `prismaSchemaFolder` preview feature so each domain
+// context lives in its own `.prisma` file inside `./schemas`. Prisma merges
+// every `.prisma` file under the configured `schema` folder into a single
+// logical schema at generate / migrate time.
+//
+// Keep this root file for generator + datasource only. Domain models live in
+// `./schemas/<context>.prisma` (e.g. `user.prisma`, `auth.prisma`).
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["prismaSchemaFolder"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}

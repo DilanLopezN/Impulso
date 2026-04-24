@@ -1,0 +1,22 @@
+// Domain: users
+// Models that describe the identity of a person using Impulso. Authentication
+// artifacts (sessions, refresh tokens) live in `auth.prisma` and reference
+// `User` by id.
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  passwordHash  String    @map("password_hash")
+  displayName   String    @map("display_name")
+  avatarUrl     String?   @map("avatar_url")
+  timezone      String    @default("UTC")
+  emailVerified Boolean   @default(false) @map("email_verified")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
+
+  sessions      Session[]
+  refreshTokens RefreshToken[]
+
+  @@map("users")
+}
