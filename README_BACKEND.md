@@ -17,9 +17,9 @@ Este documento define a visão do **back-end** do Impulso com foco em regras de 
 ## 2) Escopo funcional do domínio
 
 ### 2.1 Usuário e autenticação
-- [ ] Cadastro de conta (email/senha e provedores sociais).
-- [ ] Login/logout com refresh token.
-- [ ] Gestão de sessão por dispositivo.
+- [ ] Cadastro de conta (email/senha e provedores sociais). <!-- email/senha implementado; provedores sociais pendentes -->
+- [x] Login/logout com refresh token.
+- [ ] Gestão de sessão por dispositivo. <!-- persistência de device/UA/IP já feita; falta listar/revogar sessões -->
 - [ ] Recuperação de senha.
 - [ ] Exclusão e exportação de dados (LGPD).
 
@@ -129,7 +129,7 @@ Este documento define a visão do **back-end** do Impulso com foco em regras de 
 - [ ] Scheduler para rotinas diárias (fechamento do dia, snapshots de ranking).
 
 ### 5.1 Módulos de back-end
-- [ ] `auth` (contas, sessão, tokens)
+- [x] `auth` (contas, sessão, tokens)
 - [ ] `goals` (metas e marcos)
 - [ ] `habits` (hábitos e check-ins)
 - [ ] `gamification` (XP, nível, conquistas)
@@ -181,8 +181,8 @@ Este documento define a visão do **back-end** do Impulso com foco em regras de 
 
 ## 7) Modelo de dados (alto nível)
 
-- [ ] `users`
-- [ ] `sessions`
+- [x] `users`
+- [x] `sessions` <!-- inclui `refresh_tokens` com rotação e detecção de reuso -->
 - [ ] `goals`
 - [ ] `milestones`
 - [ ] `habits`
@@ -199,10 +199,10 @@ Este documento define a visão do **back-end** do Impulso com foco em regras de 
 ## 8) API mínima (MVP de produção)
 
 ### 8.1 Auth
-- [ ] `POST /auth/signup`
-- [ ] `POST /auth/login`
-- [ ] `POST /auth/refresh`
-- [ ] `POST /auth/logout`
+- [x] `POST /auth/signup`
+- [x] `POST /auth/login`
+- [x] `POST /auth/refresh`
+- [x] `POST /auth/logout`
 
 ### 8.2 Goals / Habits
 - [ ] `GET /goals`
@@ -229,8 +229,8 @@ Este documento define a visão do **back-end** do Impulso com foco em regras de 
 ## 9) Backlog por prioridade
 
 ### P0 — Base obrigatória
-- [ ] Definir contratos de API (OpenAPI).
-- [ ] Implementar autenticação + sessão.
+- [ ] Definir contratos de API (OpenAPI). <!-- `contracts/openapi.yaml` iniciado com módulos `auth` e `users`; demais domínios pendentes -->
+- [x] Implementar autenticação + sessão.
 - [ ] Implementar CRUD de metas/hábitos.
 - [ ] Implementar motor de XP/streak no domínio.
 - [ ] Implementar sync `push/pull` com idempotência.

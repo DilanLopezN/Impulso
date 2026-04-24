@@ -1,0 +1,280 @@
+openapi: 3.1.0
+info:
+  title: Impulso API
+  version: 0.1.0
+  description: |
+    Contrato HTTP do Impulso. Este documento é a fonte única de verdade para
+    clientes (mobile, futuras versões web/admin). Apenas os módulos já
+    implementados no back-end aparecem aqui — novos endpoints são adicionados
+    conforme cada módulo do `README_BACKEND.md` é entregue.
+
+servers:
+  - url: http://localhost:3000
+    description: Desenvolvimento local
+
+tags:
+  - name: auth
+    description: Cadastro, autenticação e gestão de sessão.
+  - name: users
+    description: Perfil do usuário autenticado.
+  - name: health
+    description: Probes de saúde.
+
+paths:
+  /health:
+    get:
+      tags: [health]
+      summary: Health check
+      operationId: health
+      responses:
+        '200':
+          description: Serviço ativo
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, service, timestamp]
+                properties:
+                  status: { type: string, enum: [ok] }
+                  service: { type: string, enum: [api] }
+                  timestamp: { type: string, format: date-time }
+
+  /auth/signup:
+    post:
+      tags: [auth]
+      summary: Cria uma nova conta e abre uma sessão
+      operationId: authSignup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SignupRequest' }
+      responses:
+        '201':
+          description: Conta criada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResult' }
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          description: Email já cadastrado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Autentica um usuário existente
+      operationId: authLogin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Autenticado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResult' }
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          description: Credenciais inválidas
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /auth/refresh:
+    post:
+      tags: [auth]
+      summary: Rotaciona o refresh token e emite novo access token
+      description: |
+        O refresh token é de uso único. Reutilização revoga a sessão inteira.
+      operationId: authRefresh
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RefreshRequest' }
+      responses:
+        '200':
+          description: Tokens renovados
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthTokens' }
+        '401':
+          description: Refresh token inválido, expirado ou reutilizado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: Encerra a sessão associada a um refresh token
+      operationId: authLogout
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LogoutRequest' }
+      responses:
+        '204':
+          description: Sessão encerrada
+
+  /users/me:
+    get:
+      tags: [users]
+      summary: Retorna o usuário autenticado
+      operationId: usersMe
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Perfil do usuário
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PublicUser' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    patch:
+      tags: [users]
+      summary: Atualiza campos do perfil do usuário autenticado
+      operationId: usersUpdate
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateUserRequest' }
+      responses:
+        '200':
+          description: Perfil atualizado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PublicUser' }
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  responses:
+    ValidationError:
+      description: Erro de validação no corpo da requisição
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: Token ausente, inválido ou expirado
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    Error:
+      type: object
+      required: [statusCode, message]
+      properties:
+        statusCode: { type: integer }
+        message:
+          oneOf:
+            - type: string
+            - type: array
+              items: { type: string }
+        error: { type: string }
+
+    SignupRequest:
+      type: object
+      required: [email, password, displayName]
+      properties:
+        email: { type: string, format: email, maxLength: 320 }
+        password: { type: string, minLength: 8, maxLength: 128 }
+        displayName: { type: string, minLength: 1, maxLength: 80 }
+        timezone:
+          type: string
+          description: IANA timezone identifier (ex. America/Sao_Paulo).
+        deviceName: { type: string, maxLength: 120 }
+        deviceId: { type: string, maxLength: 120 }
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email, maxLength: 320 }
+        password: { type: string, minLength: 1, maxLength: 128 }
+        deviceName: { type: string, maxLength: 120 }
+        deviceId: { type: string, maxLength: 120 }
+
+    RefreshRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken: { type: string, minLength: 16, maxLength: 512 }
+
+    LogoutRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken: { type: string, minLength: 16, maxLength: 512 }
+
+    UpdateUserRequest:
+      type: object
+      properties:
+        displayName: { type: string, minLength: 1, maxLength: 80 }
+        avatarUrl: { type: string, format: uri, maxLength: 1024 }
+        timezone: { type: string }
+
+    AuthTokens:
+      type: object
+      required:
+        - accessToken
+        - accessTokenExpiresAt
+        - refreshToken
+        - refreshTokenExpiresAt
+      properties:
+        accessToken: { type: string, description: 'JWT assinado com JWT_ACCESS_SECRET.' }
+        accessTokenExpiresAt: { type: string, format: date-time }
+        refreshToken:
+          type: string
+          description: |
+            Token opaco de uso único (base64url). O servidor armazena apenas o
+            hash SHA-256 e o invalida a cada rotação.
+        refreshTokenExpiresAt: { type: string, format: date-time }
+
+    PublicUser:
+      type: object
+      required:
+        - id
+        - email
+        - displayName
+        - timezone
+        - emailVerified
+        - createdAt
+        - updatedAt
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        displayName: { type: string }
+        avatarUrl: { type: string, nullable: true, format: uri }
+        timezone: { type: string }
+        emailVerified: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    AuthResult:
+      type: object
+      required: [user, tokens]
+      properties:
+        user: { $ref: '#/components/schemas/PublicUser' }
+        tokens: { $ref: '#/components/schemas/AuthTokens' }
