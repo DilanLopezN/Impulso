@@ -4,7 +4,8 @@ const { useState, useEffect, useMemo } = React;
 const DEFAULTS = /*EDITMODE-BEGIN*/{
   "accentHue": 180,
   "theme": "dark",
-  "showOnboarding": false
+  "showOnboarding": false,
+  "showAuth": true
 }/*EDITMODE-END*/;
 
 const ACCENTS = [
@@ -133,7 +134,7 @@ const initialState = {
 /* ===================== APP ===================== */
 const App = () => {
   const [tweaks, setTweak] = useTweaks(DEFAULTS);
-  const [route, setRoute] = useState(tweaks.showOnboarding ? "onboarding" : "home");
+  const [route, setRoute] = useState(tweaks.showAuth ? "auth" : (tweaks.showOnboarding ? "onboarding" : "home"));
   const [tab, setTab] = useState("home");
   const [state, setState] = useState(initialState);
   const [selectedGoalId, setSelectedGoalId] = useState(null);
@@ -189,6 +190,7 @@ const App = () => {
   };
 
   const renderScreen = () => {
+    if (route === "auth")       return <Auth onDone={() => { setRoute("onboarding"); }} />;
     if (route === "onboarding") return <Onboarding onDone={() => { setRoute("home"); setTab("home"); }} />;
     if (route === "goal")       return <GoalDetail goal={currentGoal} onBack={() => setRoute("home")} onToggleMilestone={toggleMilestone}/>;
     if (route === "create")     return <CreateGoal onClose={() => setRoute(tab)} onCreate={() => { setCelebrate(true); setTimeout(() => setCelebrate(false), 2400); setRoute(tab); }}/>;
@@ -249,13 +251,18 @@ const App = () => {
           </div>
         </TweakSection>
         <TweakSection title="Navegação">
-          <button onClick={() => setRoute("onboarding")} style={{
-            width: "100%", padding: 10, borderRadius: 10,
-            background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)",
-            color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer"
-          }}>
-            Ver onboarding
-          </button>
+          <div style={{ display: "grid", gap: 8 }}>
+            <button onClick={() => setRoute("auth")} style={{
+              width: "100%", padding: 10, borderRadius: 10,
+              background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)",
+              color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer"
+            }}>Ver login / registro</button>
+            <button onClick={() => setRoute("onboarding")} style={{
+              width: "100%", padding: 10, borderRadius: 10,
+              background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)",
+              color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer"
+            }}>Ver onboarding</button>
+          </div>
         </TweakSection>
       </TweaksPanel>
     </>
