@@ -1,0 +1,32 @@
+{
+  "name": "@impulso/knowledge",
+  "version": "0.1.0",
+  "description": "Vector knowledge base for Impulso (.md ingestion, embeddings, MCP server).",
+  "private": true,
+  "type": "module",
+  "main": "dist/mcp-server.js",
+  "bin": {
+    "impulso-knowledge-mcp": "dist/mcp-server.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "ingest": "tsx src/ingest.ts",
+    "mcp": "tsx src/mcp-server.ts",
+    "mcp:built": "node dist/mcp-server.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.65.0",
+    "@modelcontextprotocol/sdk": "^1.20.0",
+    "dotenv": "^17.2.0",
+    "pg": "^8.13.1",
+    "pgvector": "^0.2.1",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/pg": "^8.11.10",
+    "tsx": "^4.19.2",
+    "typescript": "~5.9.2"
+  }
+}
