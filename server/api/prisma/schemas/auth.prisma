@@ -40,3 +40,23 @@ model RefreshToken {
   @@index([sessionId])
   @@map("refresh_tokens")
 }
+
+// Password reset tokens. We keep only the SHA-256 hash so a database leak does
+// not expose usable reset URLs. Tokens are single-use (`usedAt`) and short
+// lived (`expiresAt`); requesting a new token does NOT invalidate older ones,
+// they simply expire on their own.
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  ipAddress String?   @map("ip_address")
+  userAgent String?   @map("user_agent")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
+}

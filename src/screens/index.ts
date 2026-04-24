@@ -1,3 +1,4 @@
+export { AccountSecurity } from './AccountSecurity';
 export { Achievements } from './Achievements';
 export { Auth } from './Auth';
 export { CreateGoal } from './CreateGoal';

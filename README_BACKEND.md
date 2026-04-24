@@ -19,9 +19,14 @@ Este documento define a visão do **back-end** do Impulso com foco em regras de 
 ### 2.1 Usuário e autenticação
 - [ ] Cadastro de conta (email/senha e provedores sociais). <!-- email/senha implementado; provedores sociais pendentes -->
 - [x] Login/logout com refresh token.
-- [ ] Gestão de sessão por dispositivo. <!-- persistência de device/UA/IP já feita; falta listar/revogar sessões -->
-- [ ] Recuperação de senha.
-- [ ] Exclusão e exportação de dados (LGPD).
+- [x] Gestão de sessão por dispositivo. <!-- `GET /sessions`, `DELETE /sessions/:id`, `DELETE /sessions/others` -->
+- [x] Recuperação de senha. <!-- `POST /auth/password/forgot` + `POST /auth/password/reset` (token SHA-256 hash, TTL 30 min, uso único) -->
+- [x] Exclusão e exportação de dados (LGPD). <!-- `GET /users/me/export` + `DELETE /users/me` (soft delete + anonimização + revoga sessões) -->
+
+> Nota LGPD: o `DELETE /users/me` faz **soft delete** preservando a linha
+> (com `deletedAt`) para integridade referencial, mas anonimiza `email`,
+> `displayName` e invalida o `passwordHash`. As sessões e refresh tokens são
+> revogados em transação.
 
 ### 2.2 Metas
 - [ ] Criar meta (tipos: hábito, prazo, numérica, projeto).
@@ -129,7 +134,9 @@ Este documento define a visão do **back-end** do Impulso com foco em regras de 
 - [ ] Scheduler para rotinas diárias (fechamento do dia, snapshots de ranking).
 
 ### 5.1 Módulos de back-end
-- [x] `auth` (contas, sessão, tokens)
+- [x] `auth` (contas, sessão, tokens, recuperação de senha)
+- [x] `users` (perfil, exportação e exclusão LGPD)
+- [x] `sessions` (listar/revogar sessões por dispositivo)
 - [ ] `goals` (metas e marcos)
 - [ ] `habits` (hábitos e check-ins)
 - [ ] `gamification` (XP, nível, conquistas)
@@ -183,6 +190,7 @@ Este documento define a visão do **back-end** do Impulso com foco em regras de 
 
 - [x] `users`
 - [x] `sessions` <!-- inclui `refresh_tokens` com rotação e detecção de reuso -->
+- [x] `password_reset_tokens` <!-- token SHA-256 hash, expiração curta, uso único -->
 - [ ] `goals`
 - [ ] `milestones`
 - [ ] `habits`
@@ -203,6 +211,13 @@ Este documento define a visão do **back-end** do Impulso com foco em regras de 
 - [x] `POST /auth/login`
 - [x] `POST /auth/refresh`
 - [x] `POST /auth/logout`
+- [x] `POST /auth/password/forgot`
+- [x] `POST /auth/password/reset`
+- [x] `GET /sessions`
+- [x] `DELETE /sessions/:id`
+- [x] `DELETE /sessions/others`
+- [x] `GET /users/me/export` <!-- LGPD: portabilidade -->
+- [x] `DELETE /users/me` <!-- LGPD: direito ao esquecimento -->>
 
 ### 8.2 Goals / Habits
 - [ ] `GET /goals`
