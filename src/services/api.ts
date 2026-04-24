@@ -1,10 +1,22 @@
 import { Platform } from 'react-native';
 
-const FALLBACK_BASE_URL =
+// Defaults usados apenas quando o `.env` não define a variável correspondente.
+// Para apontar para outro host (LAN, ngrok, staging) edite `.env` na raiz do
+// projeto — `EXPO_PUBLIC_*` é injetado pelo Expo em build time.
+const FALLBACK_API_URL =
   Platform.OS === 'android' ? 'http://10.0.2.2:3000' : 'http://localhost:3000';
+const FALLBACK_WORKERS_URL =
+  Platform.OS === 'android' ? 'http://10.0.2.2:4000' : 'http://localhost:4000';
 
-export const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '') ?? FALLBACK_BASE_URL;
+const stripTrail = (value: string) => value.replace(/\/$/, '');
+
+export const API_BASE_URL = stripTrail(
+  process.env.EXPO_PUBLIC_API_URL ?? FALLBACK_API_URL,
+);
+
+export const WORKERS_BASE_URL = stripTrail(
+  process.env.EXPO_PUBLIC_WORKERS_URL ?? FALLBACK_WORKERS_URL,
+);
 
 export class ApiError extends Error {
   status: number;

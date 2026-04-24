@@ -17,6 +17,8 @@ tags:
     description: Cadastro, autenticação e gestão de sessão.
   - name: users
     description: Perfil do usuário autenticado.
+  - name: sessions
+    description: Gestão de sessões ativas por dispositivo.
   - name: health
     description: Probes de saúde.
 
@@ -125,6 +127,115 @@ paths:
         '204':
           description: Sessão encerrada
 
+  /auth/password/forgot:
+    post:
+      tags: [auth]
+      summary: Solicita recuperação de senha (envia token por e-mail)
+      description: |
+        Sempre retorna 202 com `{status: "accepted"}`, mesmo quando o e-mail
+        informado não existe — para não vazar a existência de contas.
+        Em ambiente `development`, o token é registrado nos logs do servidor
+        para permitir testes manuais sem SMTP.
+      operationId: authForgotPassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ForgotPasswordRequest' }
+      responses:
+        '202':
+          description: Solicitação aceita
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { type: string, enum: [accepted] }
+
+  /auth/password/reset:
+    post:
+      tags: [auth]
+      summary: Redefine a senha usando token de recuperação
+      description: |
+        Token é de uso único e curta duração (30 min). Após o reset bem
+        sucedido, todas as sessões do usuário são revogadas.
+      operationId: authResetPassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ResetPasswordRequest' }
+      responses:
+        '204':
+          description: Senha atualizada
+        '401':
+          description: Token inválido, expirado ou já utilizado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /sessions:
+    get:
+      tags: [sessions]
+      summary: Lista as sessões ativas do usuário autenticado
+      operationId: sessionsList
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Lista de sessões ativas (a sessão atual marcada com `current=true`).
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Session' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /sessions/{id}:
+    delete:
+      tags: [sessions]
+      summary: Revoga uma sessão específica do usuário autenticado
+      operationId: sessionsRevokeOne
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204':
+          description: Sessão revogada
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Sessão não encontrada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /sessions/others:
+    delete:
+      tags: [sessions]
+      summary: Revoga todas as outras sessões (mantém a atual)
+      operationId: sessionsRevokeOthers
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Quantidade de sessões revogadas
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [revoked]
+                properties:
+                  revoked: { type: integer, minimum: 0 }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /users/me:
     get:
       tags: [users]
@@ -159,6 +270,45 @@ paths:
               schema: { $ref: '#/components/schemas/PublicUser' }
         '400':
           $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    delete:
+      tags: [users]
+      summary: Exclui a conta do usuário autenticado (LGPD)
+      description: |
+        Soft delete: marca `deletedAt`, anonimiza e-mail/displayName, invalida
+        a senha e revoga todas as sessões. Exige confirmação por senha no
+        corpo da requisição.
+      operationId: usersDelete
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DeleteAccountRequest' }
+      responses:
+        '204':
+          description: Conta excluída
+        '401':
+          description: Token ausente/expirado ou senha incorreta
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /users/me/export:
+    get:
+      tags: [users]
+      summary: Exporta todos os dados do usuário autenticado (LGPD)
+      operationId: usersExport
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Snapshot dos dados pessoais
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserDataExport' }
         '401':
           $ref: '#/components/responses/Unauthorized'
 
@@ -227,6 +377,62 @@ components:
       required: [refreshToken]
       properties:
         refreshToken: { type: string, minLength: 16, maxLength: 512 }
+
+    ForgotPasswordRequest:
+      type: object
+      required: [email]
+      properties:
+        email: { type: string, format: email, maxLength: 320 }
+
+    ResetPasswordRequest:
+      type: object
+      required: [token, password]
+      properties:
+        token: { type: string, minLength: 16, maxLength: 512 }
+        password: { type: string, minLength: 8, maxLength: 128 }
+
+    DeleteAccountRequest:
+      type: object
+      required: [password]
+      properties:
+        password: { type: string, minLength: 1, maxLength: 128 }
+
+    Session:
+      type: object
+      required: [id, createdAt, lastSeenAt, current]
+      properties:
+        id: { type: string, format: uuid }
+        deviceId: { type: string, nullable: true }
+        deviceName: { type: string, nullable: true }
+        userAgent: { type: string, nullable: true }
+        ipAddress: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        lastSeenAt: { type: string, format: date-time }
+        current:
+          type: boolean
+          description: Verdadeiro quando a sessão é a usada na requisição atual.
+
+    UserDataExport:
+      type: object
+      required: [schemaVersion, generatedAt, user, sessions]
+      properties:
+        schemaVersion: { type: integer, enum: [1] }
+        generatedAt: { type: string, format: date-time }
+        user: { $ref: '#/components/schemas/PublicUser' }
+        sessions:
+          type: array
+          items:
+            type: object
+            required: [id, createdAt, lastSeenAt]
+            properties:
+              id: { type: string, format: uuid }
+              deviceId: { type: string, nullable: true }
+              deviceName: { type: string, nullable: true }
+              userAgent: { type: string, nullable: true }
+              ipAddress: { type: string, nullable: true }
+              createdAt: { type: string, format: date-time }
+              lastSeenAt: { type: string, format: date-time }
+              revokedAt: { type: string, format: date-time, nullable: true }
 
     UpdateUserRequest:
       type: object
