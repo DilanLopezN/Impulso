@@ -60,11 +60,11 @@ const StatusBar = () => (
 /* ===================== TAB BAR ===================== */
 const TabBar = ({ active, onChange }) => {
   const tabs = [
-    { id: "home",         icon: "home",   label: "Home" },
-    { id: "habits",       icon: "flame",  label: "Hábitos" },
-    { id: "rank",         icon: "medal",  label: "Rank" },
-    { id: "achievements", icon: "trophy", label: "Conquistas" },
-    { id: "profile",      icon: "user",   label: "Perfil" },
+    { id: "home",    icon: "home",   label: "Home" },
+    { id: "habits",  icon: "flame",  label: "Hábitos" },
+    { id: "feed",    icon: "heart",  label: "Feed" },
+    { id: "rank",    icon: "medal",  label: "Rank" },
+    { id: "profile", icon: "user",   label: "Perfil" },
   ];
   return (
     <div className="tabbar">

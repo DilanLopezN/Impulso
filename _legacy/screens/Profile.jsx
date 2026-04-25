@@ -3,7 +3,7 @@
 /* =================================================
    PROFILE
    ================================================= */
-const Profile = ({ state, onReset, onOpenOnboarding }) => {
+const Profile = ({ state, onReset, onOpenOnboarding, onOpenSupport }) => {
   const { name, xp, level, xpToNext, streak } = state;
 
   const stats = [
@@ -113,7 +113,7 @@ const Profile = ({ state, onReset, onOpenOnboarding }) => {
             <MenuRow icon="bell" label="Notificações" right="Ativas" />
             <MenuRow icon="moon" label="Aparência" right="Escuro" />
             <MenuRow icon="calendar" label="Integração com Calendário" right="Google" />
-            <MenuRow icon="heart" label="Apoiar Impulso" right="Pro" rightAccent />
+            <MenuRow icon="heart" label="Apoiar Impulso" right="Pro" rightAccent onClick={onOpenSupport} />
             <MenuRow icon="share" label="Convidar amigos" />
             <MenuRow icon="sparkle" label="Revisitar onboarding" onClick={onOpenOnboarding} last />
           </div>

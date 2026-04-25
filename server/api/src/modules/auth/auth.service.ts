@@ -321,7 +321,7 @@ export class AuthService {
     const payload: AccessTokenPayload = { sub: userId, sid: sessionId };
     const accessToken = this.jwt.sign(payload, {
       secret: this.requireString('JWT_ACCESS_SECRET'),
-      expiresIn: accessTtl,
+      expiresIn: this.parseTtlToSeconds(accessTtl),
     });
 
     return {
@@ -377,6 +377,22 @@ export class AuthService {
       d: 24 * 60 * 60 * 1000,
     };
     return new Date(Date.now() + value * multipliers[unit]);
+  }
+
+  private parseTtlToSeconds(ttl: string): number {
+    const match = /^(\d+)([smhd])$/.exec(ttl);
+    if (!match) {
+      return 15 * 60;
+    }
+    const value = Number(match[1]);
+    const unit = match[2];
+    const multipliers: Record<string, number> = {
+      s: 1,
+      m: 60,
+      h: 60 * 60,
+      d: 24 * 60 * 60,
+    };
+    return value * multipliers[unit];
   }
 
   private requireString(key: string): string {

@@ -198,11 +198,13 @@ const App = () => {
     if (route === "habits")     return <Habits habits={state.habits} toggleHabit={toggleHabit} />;
     if (route === "achievements") return <Achievements />;
     if (route === "rank")       return <Rank state={state} />;
-    if (route === "profile")    return <Profile state={state} onOpenOnboarding={() => setRoute("onboarding")} onReset={() => { setState(initialState); }} />;
+    if (route === "feed")       return <Feed />;
+    if (route === "support")    return <Support onBack={() => setRoute(tab)} onSubscribe={() => setRoute(tab)} isPro={false} />;
+    if (route === "profile")    return <Profile state={state} onOpenOnboarding={() => setRoute("onboarding")} onOpenSupport={() => setRoute("support")} onReset={() => { setState(initialState); }} />;
     return null;
   };
 
-  const showTabs = ["home", "habits", "rank", "achievements", "profile"].includes(route);
+  const showTabs = ["home", "habits", "rank", "feed", "profile"].includes(route);
 
   return (
     <>
@@ -262,6 +264,16 @@ const App = () => {
               background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)",
               color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer"
             }}>Ver onboarding</button>
+            <button onClick={() => setRoute("support")} style={{
+              width: "100%", padding: 10, borderRadius: 10,
+              background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)",
+              color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer"
+            }}>Ver tela de apoio</button>
+            <button onClick={() => setRoute("achievements")} style={{
+              width: "100%", padding: 10, borderRadius: 10,
+              background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)",
+              color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer"
+            }}>Ver conquistas</button>
           </div>
         </TweakSection>
       </TweaksPanel>
