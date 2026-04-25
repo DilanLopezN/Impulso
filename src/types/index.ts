@@ -88,5 +88,5 @@ export type AppState = {
   habits: Habit[];
 };
 
-export type TabId = 'home' | 'habits' | 'rank' | 'achievements' | 'profile';
+export type TabId = 'home' | 'habits' | 'feed' | 'rank' | 'achievements' | 'profile';
 export type Route = TabId | 'onboarding' | 'goal' | 'create' | 'security';

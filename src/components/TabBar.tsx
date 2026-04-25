@@ -17,6 +17,7 @@ type TabBarProps = {
 const TABS: { id: TabId; icon: IconName; label: string }[] = [
   { id: 'home', icon: 'home', label: 'Home' },
   { id: 'habits', icon: 'flame', label: 'Hábitos' },
+  { id: 'feed', icon: 'sparkle', label: 'Feed' },
   { id: 'rank', icon: 'medal', label: 'Rank' },
   { id: 'achievements', icon: 'trophy', label: 'Conquistas' },
   { id: 'profile', icon: 'user', label: 'Perfil' },

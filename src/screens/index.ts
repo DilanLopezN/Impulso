@@ -2,6 +2,7 @@ export { AccountSecurity } from './AccountSecurity';
 export { Achievements } from './Achievements';
 export { Auth } from './Auth';
 export { CreateGoal } from './CreateGoal';
+export { Feed } from './Feed';
 export { GoalDetail } from './GoalDetail';
 export { Habits } from './Habits';
 export { Home } from './Home';
