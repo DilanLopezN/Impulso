@@ -1,5 +1,5 @@
-import React from 'react';
-import { Pressable, ScrollView, View } from 'react-native';
+import React, { useState } from 'react';
+import { Alert, Pressable, ScrollView, View } from 'react-native';
 
 import {
   Body,
@@ -15,24 +15,79 @@ import {
   SectionHead,
   Small,
 } from '@/components';
+import { useGoals } from '@/goals/GoalsContext';
 import { useTheme } from '@/theme/ThemeContext';
 import type { Goal } from '@/types';
 
 type GoalDetailProps = {
+  goalId: string | null;
   goal: Goal | undefined;
   onBack: () => void;
   onToggleMilestone: (index: number) => void;
 };
 
 export const GoalDetail = ({
+  goalId,
   goal,
   onBack,
   onToggleMilestone,
 }: GoalDetailProps) => {
   const { theme } = useTheme();
+  const { goals, archiveGoal, unarchiveGoal, deleteGoal } = useGoals();
+  const [busy, setBusy] = useState(false);
 
-  if (!goal) return null;
+  if (!goal || !goalId) return null;
+  const remoteGoal = goals.find((g) => g.id === goalId);
+  const archived = !!remoteGoal?.archivedAt;
   const pct = Math.round(goal.progress * 100);
+
+  const handleArchiveToggle = async () => {
+    setBusy(true);
+    try {
+      if (archived) {
+        await unarchiveGoal(goalId);
+      } else {
+        await archiveGoal(goalId);
+      }
+    } catch (err) {
+      Alert.alert(
+        'Erro',
+        err instanceof Error ? err.message : 'Não foi possível atualizar a meta.',
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDelete = () => {
+    Alert.alert(
+      'Excluir meta',
+      'A meta sai das listagens, mas o histórico é mantido. Deseja continuar?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Excluir',
+          style: 'destructive',
+          onPress: async () => {
+            setBusy(true);
+            try {
+              await deleteGoal(goalId);
+              onBack();
+            } catch (err) {
+              Alert.alert(
+                'Erro',
+                err instanceof Error
+                  ? err.message
+                  : 'Não foi possível excluir a meta.',
+              );
+            } finally {
+              setBusy(false);
+            }
+          },
+        },
+      ],
+    );
+  };
 
   return (
     <ScrollView
@@ -321,31 +376,35 @@ export const GoalDetail = ({
       <View
         style={{
           paddingHorizontal: 20,
-          paddingBottom: 24,
+          paddingBottom: 12,
           flexDirection: 'row',
           gap: 10,
         }}
       >
         <Button
           variant="ghost"
-          label="Lembrete"
+          label={archived ? 'Desarquivar' : 'Arquivar'}
+          onPress={handleArchiveToggle}
+          disabled={busy}
           leftAdornment={
-            <Icon name="clock" size={16} stroke={2} color={theme.ink[0]} />
+            <Icon
+              name={archived ? 'sparkle' : 'lock'}
+              size={16}
+              stroke={2}
+              color={theme.ink[0]}
+            />
           }
           style={{ flex: 1 }}
         />
         <Button
-          label="Registrar progresso"
-          backgroundColor={goal.color}
+          label="Excluir"
+          backgroundColor={theme.danger}
+          onPress={handleDelete}
+          disabled={busy}
           rightAdornment={
-            <Icon
-              name="plus"
-              size={16}
-              stroke={2.4}
-              color={theme.accentInk}
-            />
+            <Icon name="close" size={16} stroke={2.4} color={theme.accentInk} />
           }
-          style={{ flex: 1.5 }}
+          style={{ flex: 1 }}
         />
       </View>
     </ScrollView>

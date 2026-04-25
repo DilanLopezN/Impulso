@@ -52,7 +52,13 @@ export class UsersService {
   async exportData(userId: string): Promise<UserDataExport> {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      include: { sessions: { orderBy: { createdAt: 'desc' } } },
+      include: {
+        sessions: { orderBy: { createdAt: 'desc' } },
+        goals: {
+          include: { milestones: { orderBy: { order: 'asc' } } },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
     });
     if (!user || user.deletedAt) {
       throw new NotFoundException('User not found');
@@ -71,6 +77,35 @@ export class UsersService {
         createdAt: session.createdAt.toISOString(),
         lastSeenAt: session.lastSeenAt.toISOString(),
         revokedAt: session.revokedAt ? session.revokedAt.toISOString() : null,
+      })),
+      goals: user.goals.map((goal) => ({
+        id: goal.id,
+        title: goal.title,
+        description: goal.description,
+        category: goal.category,
+        type: goal.type,
+        icon: goal.icon,
+        color: goal.color,
+        deadline: goal.deadline ? goal.deadline.toISOString() : null,
+        targetValue: goal.targetValue,
+        targetUnit: goal.targetUnit,
+        frequency: goal.frequency,
+        progress: goal.progress,
+        archivedAt: goal.archivedAt ? goal.archivedAt.toISOString() : null,
+        deletedAt: goal.deletedAt ? goal.deletedAt.toISOString() : null,
+        createdAt: goal.createdAt.toISOString(),
+        updatedAt: goal.updatedAt.toISOString(),
+        milestones: goal.milestones.map((m) => ({
+          id: m.id,
+          title: m.title,
+          date: m.date ? m.date.toISOString() : null,
+          done: m.done,
+          xp: m.xp,
+          order: m.order,
+          completedAt: m.completedAt ? m.completedAt.toISOString() : null,
+          createdAt: m.createdAt.toISOString(),
+          updatedAt: m.updatedAt.toISOString(),
+        })),
       })),
     };
   }

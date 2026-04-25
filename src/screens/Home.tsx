@@ -33,9 +33,12 @@ export const Home = ({ state, dispatch, openGoal }: HomeProps) => {
   const { goals, streak, xp, level, xpToNext, todayDone, todayTotal, weekDays, name } =
     state;
 
-  const momentum = Math.round(
-    (goals.reduce((acc, g) => acc + g.progress, 0) / goals.length) * 100,
-  );
+  const momentum =
+    goals.length === 0
+      ? 0
+      : Math.round(
+          (goals.reduce((acc, g) => acc + g.progress, 0) / goals.length) * 100,
+        );
 
   return (
     <ScrollView

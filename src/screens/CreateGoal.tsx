@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, ScrollView, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, TextInput, View } from 'react-native';
 
 import {
   Body,
@@ -13,6 +13,13 @@ import {
   Mono,
   Small,
 } from '@/components';
+import { useGoals } from '@/goals/GoalsContext';
+import { ApiError } from '@/services/api';
+import type {
+  CreateGoalPayload,
+  GoalFrequency,
+  GoalType,
+} from '@/services/goals.service';
 import { useTheme } from '@/theme/ThemeContext';
 import type { IconName } from '@/types';
 
@@ -27,7 +34,7 @@ type FormState = {
 
 type CreateGoalProps = {
   onClose: () => void;
-  onCreate: (form: FormState) => void;
+  onCreate: () => void;
 };
 
 const CATEGORIES: {
@@ -44,16 +51,24 @@ const CATEGORIES: {
   { id: 'habit', label: 'Hábito', icon: 'flame', color: '#F2A070' },
 ];
 
-const TYPES: { id: string; label: string; sub: string; icon: IconName }[] = [
-  { id: 'habit', label: 'Hábito diário', sub: 'Consistência em streaks', icon: 'flame' },
-  { id: 'deadline', label: 'Meta com prazo', sub: 'Alcance até uma data', icon: 'calendar' },
-  { id: 'numeric', label: 'Meta numérica', sub: 'Ex: economizar R$ 5.000', icon: 'trend' },
-  { id: 'project', label: 'Projeto', sub: 'Com sub-tarefas e marcos', icon: 'target' },
+const TYPES: {
+  id: GoalType;
+  label: string;
+  sub: string;
+  icon: IconName;
+}[] = [
+  { id: 'HABIT', label: 'Hábito diário', sub: 'Consistência em streaks', icon: 'flame' },
+  { id: 'DEADLINE', label: 'Meta com prazo', sub: 'Alcance até uma data', icon: 'calendar' },
+  { id: 'NUMERIC', label: 'Meta numérica', sub: 'Ex: economizar R$ 5.000', icon: 'trend' },
+  { id: 'PROJECT', label: 'Projeto', sub: 'Com sub-tarefas e marcos', icon: 'target' },
 ];
 
 export const CreateGoal = ({ onClose, onCreate }: CreateGoalProps) => {
   const { theme } = useTheme();
+  const { createGoal } = useGoals();
   const [step, setStep] = useState(0);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>({
     title: '',
     category: null,
@@ -66,12 +81,30 @@ export const CreateGoal = ({ onClose, onCreate }: CreateGoalProps) => {
   const canNext = useMemo(() => {
     if (step === 0) return !!form.category;
     if (step === 1) return !!form.type && form.title.length > 2;
-    return true;
-  }, [step, form]);
+    return !submitting;
+  }, [step, form, submitting]);
+
+  const submit = async () => {
+    if (!form.type || !form.category) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const payload = buildCreatePayload(form);
+      await createGoal(payload);
+      onCreate();
+    } catch (err) {
+      setError(humanize(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const onPrimary = () => {
-    if (step === 2) onCreate(form);
-    else setStep(step + 1);
+    if (step === 2) {
+      void submit();
+    } else {
+      setStep(step + 1);
+    }
   };
   const onBack = () => {
     if (step === 0) onClose();
@@ -639,16 +672,67 @@ export const CreateGoal = ({ onClose, onCreate }: CreateGoalProps) => {
       </ScrollView>
 
       <View style={{ paddingHorizontal: 20, paddingVertical: 16 }}>
+        {error ? (
+          <Small style={{ color: theme.danger, marginBottom: 8 }}>{error}</Small>
+        ) : null}
         <Button
-          label={step === 2 ? 'Criar meta' : 'Continuar'}
+          label={step === 2 ? (submitting ? 'Criando…' : 'Criar meta') : 'Continuar'}
           onPress={onPrimary}
-          disabled={!canNext}
+          disabled={!canNext || submitting}
           rightAdornment={
-            <Icon name="arrow" size={16} stroke={2} color={theme.accentInk} />
+            submitting ? (
+              <ActivityIndicator size="small" color={theme.accentInk} />
+            ) : (
+              <Icon name="arrow" size={16} stroke={2} color={theme.accentInk} />
+            )
           }
           style={{ width: '100%' }}
         />
       </View>
     </View>
   );
+};
+
+const buildCreatePayload = (form: FormState): CreateGoalPayload => {
+  const category = CATEGORIES.find((c) => c.id === form.category);
+  const type = (form.type ?? 'PROJECT') as GoalType;
+
+  const payload: CreateGoalPayload = {
+    title: form.title.trim(),
+    type,
+    category: category?.label,
+    icon: category?.icon,
+    color: category?.color,
+  };
+
+  if (type === 'HABIT') {
+    payload.frequency = mapFrequency(form.unit);
+  }
+  if (type === 'DEADLINE') {
+    payload.deadline = deadlineFromDays(form.target).toISOString();
+  }
+  if (type === 'NUMERIC') {
+    payload.targetValue = form.target;
+    payload.targetUnit = form.unit;
+  }
+
+  return payload;
+};
+
+const mapFrequency = (unit: string): GoalFrequency => {
+  if (/sem/i.test(unit)) return 'WEEKLY';
+  if (/m[eê]s/i.test(unit)) return 'MONTHLY';
+  return 'DAILY';
+};
+
+const deadlineFromDays = (days: number): Date => {
+  const target = new Date();
+  target.setDate(target.getDate() + Math.max(1, days));
+  return target;
+};
+
+const humanize = (err: unknown): string => {
+  if (err instanceof ApiError) return err.message;
+  if (err instanceof Error) return err.message;
+  return 'Não foi possível criar a meta.';
 };

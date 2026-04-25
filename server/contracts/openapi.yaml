@@ -19,6 +19,8 @@ tags:
     description: Perfil do usuário autenticado.
   - name: sessions
     description: Gestão de sessões ativas por dispositivo.
+  - name: goals
+    description: CRUD de metas (hábito/prazo/numérica/projeto) e marcos.
   - name: health
     description: Probes de saúde.
 
@@ -312,6 +314,284 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /goals:
+    get:
+      tags: [goals]
+      summary: Lista as metas do usuário autenticado
+      operationId: goalsList
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: archived
+          schema: { type: boolean }
+          description: Quando `true`, retorna apenas arquivadas; `false`, apenas ativas; ausente retorna ambas.
+        - in: query
+          name: includeDeleted
+          schema: { type: boolean }
+          description: Inclui metas com `deletedAt` (soft-delete) para fins de histórico/auditoria.
+      responses:
+        '200':
+          description: Lista de metas
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Goal' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [goals]
+      summary: Cria uma nova meta
+      description: |
+        Tipos suportados — cada um com requisitos específicos:
+        - `HABIT` exige `frequency`.
+        - `DEADLINE` exige `deadline`.
+        - `NUMERIC` exige `targetValue` (e opcionalmente `targetUnit`).
+        - `PROJECT` aceita marcos no momento da criação.
+      operationId: goalsCreate
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateGoalRequest' }
+      responses:
+        '201':
+          description: Meta criada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Goal' }
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /goals/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [goals]
+      summary: Detalhe de uma meta
+      operationId: goalsGet
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Meta encontrada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Goal' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Meta não encontrada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    patch:
+      tags: [goals]
+      summary: Atualiza campos da meta (não editável quando arquivada)
+      operationId: goalsUpdate
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateGoalRequest' }
+      responses:
+        '200':
+          description: Meta atualizada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Goal' }
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Meta não encontrada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: Meta arquivada (somente leitura)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    delete:
+      tags: [goals]
+      summary: Soft-delete (mantém histórico)
+      description: |
+        Marca `deletedAt` no servidor; a meta deixa de aparecer nas listagens
+        padrão mas pode ser recuperada via `?includeDeleted=true`. Esta regra
+        existe para preservar referências históricas (XP ledger, conquistas,
+        auditoria).
+      operationId: goalsRemove
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Meta removida
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Meta não encontrada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /goals/{id}/archive:
+    post:
+      tags: [goals]
+      summary: Arquiva a meta (somente leitura)
+      operationId: goalsArchive
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Meta arquivada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Goal' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Meta não encontrada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /goals/{id}/unarchive:
+    post:
+      tags: [goals]
+      summary: Remove o arquivamento da meta
+      operationId: goalsUnarchive
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Meta desarquivada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Goal' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Meta não encontrada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /goals/{id}/milestones:
+    post:
+      tags: [goals]
+      summary: Adiciona um marco à meta
+      operationId: goalsAddMilestone
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateMilestoneRequest' }
+      responses:
+        '201':
+          description: Meta com marco adicionado (progresso recalculado)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Goal' }
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Meta não encontrada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: Meta arquivada (somente leitura)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /goals/{id}/milestones/{milestoneId}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+      - in: path
+        name: milestoneId
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [goals]
+      summary: Atualiza um marco (e recalcula o progresso da meta)
+      operationId: goalsUpdateMilestone
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateMilestoneRequest' }
+      responses:
+        '200':
+          description: Meta atualizada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Goal' }
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Meta ou marco não encontrado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    delete:
+      tags: [goals]
+      summary: Remove um marco da meta
+      operationId: goalsRemoveMilestone
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Meta com marco removido
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Goal' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Meta ou marco não encontrado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -414,7 +694,7 @@ components:
 
     UserDataExport:
       type: object
-      required: [schemaVersion, generatedAt, user, sessions]
+      required: [schemaVersion, generatedAt, user, sessions, goals]
       properties:
         schemaVersion: { type: integer, enum: [1] }
         generatedAt: { type: string, format: date-time }
@@ -433,6 +713,138 @@ components:
               createdAt: { type: string, format: date-time }
               lastSeenAt: { type: string, format: date-time }
               revokedAt: { type: string, format: date-time, nullable: true }
+        goals:
+          type: array
+          items: { $ref: '#/components/schemas/GoalExport' }
+
+    GoalType:
+      type: string
+      enum: [HABIT, DEADLINE, NUMERIC, PROJECT]
+
+    GoalFrequency:
+      type: string
+      enum: [DAILY, WEEKLY, MONTHLY, CUSTOM]
+
+    Milestone:
+      type: object
+      required: [id, title, done, xp, order, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        date: { type: string, format: date-time, nullable: true }
+        done: { type: boolean }
+        xp: { type: integer, minimum: 0 }
+        order: { type: integer, minimum: 0 }
+        completedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    Goal:
+      type: object
+      required:
+        - id
+        - title
+        - type
+        - progress
+        - createdAt
+        - updatedAt
+        - milestones
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        category: { type: string, nullable: true }
+        type: { $ref: '#/components/schemas/GoalType' }
+        icon: { type: string, nullable: true }
+        color: { type: string, nullable: true }
+        deadline: { type: string, format: date-time, nullable: true }
+        targetValue: { type: number, nullable: true }
+        targetUnit: { type: string, nullable: true }
+        frequency:
+          allOf:
+            - $ref: '#/components/schemas/GoalFrequency'
+          nullable: true
+        progress:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Fração de marcos concluídos (0..1).
+        archivedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        milestones:
+          type: array
+          items: { $ref: '#/components/schemas/Milestone' }
+
+    GoalExport:
+      allOf:
+        - $ref: '#/components/schemas/Goal'
+        - type: object
+          properties:
+            deletedAt: { type: string, format: date-time, nullable: true }
+
+    CreateGoalRequest:
+      type: object
+      required: [title, type]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 120 }
+        description: { type: string, maxLength: 2000 }
+        category: { type: string, maxLength: 60 }
+        type: { $ref: '#/components/schemas/GoalType' }
+        icon: { type: string, maxLength: 40 }
+        color: { type: string, description: 'Cor hexadecimal (ex.: #F2947A).' }
+        deadline: { type: string, format: date-time }
+        targetValue: { type: number, minimum: 0 }
+        targetUnit: { type: string, maxLength: 20 }
+        frequency: { $ref: '#/components/schemas/GoalFrequency' }
+        milestones:
+          type: array
+          maxItems: 50
+          items:
+            type: object
+            required: [title]
+            properties:
+              title: { type: string, minLength: 1, maxLength: 120 }
+              date: { type: string, format: date-time }
+              xp: { type: integer, minimum: 0 }
+
+    UpdateGoalRequest:
+      type: object
+      description: |
+        Apenas os campos enviados são atualizados. Não é possível trocar `type`
+        após a criação. Para campos opcionais, envie `null` para limpar.
+      properties:
+        title: { type: string, minLength: 1, maxLength: 120 }
+        description: { type: string, maxLength: 2000 }
+        category: { type: string, maxLength: 60 }
+        icon: { type: string, maxLength: 40 }
+        color: { type: string }
+        deadline: { type: string, format: date-time, nullable: true }
+        targetValue: { type: number, minimum: 0, nullable: true }
+        targetUnit: { type: string, maxLength: 20, nullable: true }
+        frequency:
+          allOf:
+            - $ref: '#/components/schemas/GoalFrequency'
+          nullable: true
+
+    CreateMilestoneRequest:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 120 }
+        date: { type: string, format: date-time }
+        xp: { type: integer, minimum: 0 }
+        order: { type: integer, minimum: 0 }
+        done: { type: boolean }
+
+    UpdateMilestoneRequest:
+      type: object
+      properties:
+        title: { type: string, minLength: 1, maxLength: 120 }
+        date: { type: string, format: date-time, nullable: true }
+        xp: { type: integer, minimum: 0 }
+        order: { type: integer, minimum: 0 }
+        done: { type: boolean }
 
     UpdateUserRequest:
       type: object

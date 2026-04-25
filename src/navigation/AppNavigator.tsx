@@ -1,10 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/auth/AuthContext';
 import { Celebration, FAB, TabBar } from '@/components';
 import { initialState } from '@/data/seed';
+import { goalsToLegacy } from '@/goals/adapters';
+import { useGoals } from '@/goals/GoalsContext';
 import {
   AccountSecurity,
   Achievements,
@@ -24,6 +26,7 @@ export const AppNavigator = () => {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const { status, user, isFirstSession, completeWelcome } = useAuth();
+  const { goals: remoteGoals, toggleMilestone: toggleMilestoneRemote } = useGoals();
 
   const [state, setState] = useState<AppState>(initialState);
   const [route, setRoute] = useState<Route>('home');
@@ -44,6 +47,16 @@ export const AppNavigator = () => {
       setSelectedGoalId(null);
     }
   }, [status]);
+
+  const activeGoals = useMemo(
+    () => remoteGoals.filter((g) => !g.archivedAt),
+    [remoteGoals],
+  );
+  const legacyGoals = useMemo(() => goalsToLegacy(activeGoals), [activeGoals]);
+  const stateWithGoals = useMemo<AppState>(
+    () => ({ ...state, goals: legacyGoals }),
+    [state, legacyGoals],
+  );
 
   const dispatch = (action: { type: 'toggle'; key: string }) => {
     if (action.type === 'toggle') {
@@ -70,19 +83,13 @@ export const AppNavigator = () => {
   };
 
   const toggleMilestone = (idx: number) => {
-    setState((s) => ({
-      ...s,
-      goals: s.goals.map((g) =>
-        g.id !== selectedGoalId
-          ? g
-          : {
-              ...g,
-              milestones: g.milestones.map((m, i) =>
-                i === idx ? { ...m, done: !m.done } : m,
-              ),
-            },
-      ),
-    }));
+    if (!selectedGoalId) return;
+    const goal = remoteGoals.find((g) => g.id === selectedGoalId);
+    const milestone = goal?.milestones[idx];
+    if (!goal || !milestone) return;
+    void toggleMilestoneRemote(goal.id, milestone.id, !milestone.done).catch(() => {
+      // Failure surfaces via context error state; nothing else to do here.
+    });
   };
 
   const openGoal = (id: string) => {
@@ -95,7 +102,7 @@ export const AppNavigator = () => {
     setRoute(id);
   };
 
-  const currentGoal = state.goals.find((g) => g.id === selectedGoalId);
+  const currentGoal = legacyGoals.find((g) => g.id === selectedGoalId);
 
   if (status === 'unauthenticated') {
     return (
@@ -137,6 +144,7 @@ export const AppNavigator = () => {
       case 'goal':
         return (
           <GoalDetail
+            goalId={selectedGoalId}
             goal={currentGoal}
             onBack={() => setRoute('home')}
             onToggleMilestone={toggleMilestone}
@@ -153,7 +161,7 @@ export const AppNavigator = () => {
           />
         );
       case 'home':
-        return <Home state={state} dispatch={dispatch} openGoal={openGoal} />;
+        return <Home state={stateWithGoals} dispatch={dispatch} openGoal={openGoal} />;
       case 'habits':
         return <Habits habits={state.habits} toggleHabit={toggleHabit} />;
       case 'achievements':
@@ -163,7 +171,7 @@ export const AppNavigator = () => {
       case 'profile':
         return (
           <Profile
-            state={state}
+            state={stateWithGoals}
             onOpenOnboarding={() => setRoute('onboarding')}
             onOpenSecurity={() => setRoute('security')}
             onReset={() => setState(initialState)}
