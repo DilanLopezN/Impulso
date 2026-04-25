@@ -12,6 +12,7 @@ import {
   Achievements,
   Auth,
   CreateGoal,
+  Feed,
   GoalDetail,
   Habits,
   Home,
@@ -126,7 +127,7 @@ export const AppNavigator = () => {
     );
   }
 
-  const showTabs = ['home', 'habits', 'rank', 'achievements', 'profile'].includes(
+  const showTabs = ['home', 'habits', 'feed', 'rank', 'achievements', 'profile'].includes(
     route,
   );
 
@@ -164,6 +165,8 @@ export const AppNavigator = () => {
         return <Home state={stateWithGoals} dispatch={dispatch} openGoal={openGoal} />;
       case 'habits':
         return <Habits habits={state.habits} toggleHabit={toggleHabit} />;
+      case 'feed':
+        return <Feed />;
       case 'achievements':
         return <Achievements />;
       case 'rank':
