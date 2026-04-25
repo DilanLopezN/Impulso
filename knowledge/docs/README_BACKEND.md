@@ -29,11 +29,15 @@ Este documento define a visão do **back-end** do Impulso com foco em regras de 
 > revogados em transação.
 
 ### 2.2 Metas
-- [ ] Criar meta (tipos: hábito, prazo, numérica, projeto).
-- [ ] Editar meta (nome, categoria, prazo, meta-alvo, frequência).
-- [ ] Arquivar/desarquivar meta.
-- [ ] Excluir meta com regra de retenção de histórico.
-- [ ] Gerenciar marcos da meta.
+- [x] Criar meta (tipos: hábito, prazo, numérica, projeto). <!-- `POST /goals` com validação por tipo (HABIT exige `frequency`, DEADLINE exige `deadline`, NUMERIC exige `targetValue`). -->
+- [x] Editar meta (nome, categoria, prazo, meta-alvo, frequência). <!-- `PATCH /goals/:id`; bloqueado em metas arquivadas (409). -->
+- [x] Arquivar/desarquivar meta. <!-- `POST /goals/:id/archive` e `POST /goals/:id/unarchive`. -->
+- [x] Excluir meta com regra de retenção de histórico. <!-- `DELETE /goals/:id` faz soft-delete (`deletedAt`); `?includeDeleted=true` recupera para auditoria. -->
+- [x] Gerenciar marcos da meta. <!-- `POST/PATCH/DELETE /goals/:id/milestones[/:milestoneId]`; cada mutação recalcula `progress`. -->
+
+> Implementação em `server/api/src/modules/goals/`.
+> Schema em `server/api/prisma/schemas/goal.prisma` (`goals` + `milestones`).
+> Front-end consome via `src/services/goals.service.ts` + `src/goals/GoalsContext.tsx`.
 
 ### 2.3 Hábitos
 - [ ] Criar hábito com periodicidade.
@@ -137,7 +141,7 @@ Este documento define a visão do **back-end** do Impulso com foco em regras de 
 - [x] `auth` (contas, sessão, tokens, recuperação de senha)
 - [x] `users` (perfil, exportação e exclusão LGPD)
 - [x] `sessions` (listar/revogar sessões por dispositivo)
-- [ ] `goals` (metas e marcos)
+- [x] `goals` (metas e marcos)
 - [ ] `habits` (hábitos e check-ins)
 - [ ] `gamification` (XP, nível, conquistas)
 - [ ] `leaderboard` (ranking e snapshots)
@@ -191,8 +195,9 @@ Este documento define a visão do **back-end** do Impulso com foco em regras de 
 - [x] `users`
 - [x] `sessions` <!-- inclui `refresh_tokens` com rotação e detecção de reuso -->
 - [x] `password_reset_tokens` <!-- token SHA-256 hash, expiração curta, uso único -->
-- [ ] `goals`
-- [ ] `milestones`
+- [x] `goals` <!-- soft-delete via `deletedAt`, arquivamento via `archivedAt` -->
+- [x] `milestones` <!-- ordenadas por `order`, recalcula `progress` da meta -->
+
 - [ ] `habits`
 - [ ] `habit_checkins` (evento diário)
 - [ ] `xp_ledger` (livro-razão de pontuação)
@@ -220,10 +225,16 @@ Este documento define a visão do **back-end** do Impulso com foco em regras de 
 - [x] `DELETE /users/me` <!-- LGPD: direito ao esquecimento -->>
 
 ### 8.2 Goals / Habits
-- [ ] `GET /goals`
-- [ ] `POST /goals`
-- [ ] `PATCH /goals/:id`
-- [ ] `POST /goals/:id/milestones`
+- [x] `GET /goals` <!-- aceita `?archived=true|false` e `?includeDeleted=true` -->
+- [x] `POST /goals` <!-- valida requisitos por tipo -->
+- [x] `GET /goals/:id`
+- [x] `PATCH /goals/:id` <!-- 409 quando arquivada -->
+- [x] `DELETE /goals/:id` <!-- soft-delete -->
+- [x] `POST /goals/:id/archive`
+- [x] `POST /goals/:id/unarchive`
+- [x] `POST /goals/:id/milestones`
+- [x] `PATCH /goals/:id/milestones/:milestoneId` <!-- recalcula `progress` -->
+- [x] `DELETE /goals/:id/milestones/:milestoneId`
 - [ ] `POST /habits`
 - [ ] `POST /habits/:id/checkin`
 - [ ] `DELETE /habits/:id/checkin?date=YYYY-MM-DD`
@@ -244,9 +255,10 @@ Este documento define a visão do **back-end** do Impulso com foco em regras de 
 ## 9) Backlog por prioridade
 
 ### P0 — Base obrigatória
-- [ ] Definir contratos de API (OpenAPI). <!-- `contracts/openapi.yaml` iniciado com módulos `auth` e `users`; demais domínios pendentes -->
+- [ ] Definir contratos de API (OpenAPI). <!-- `contracts/openapi.yaml` cobre `auth`, `users`, `sessions` e `goals`; `habits`/`gamification`/`sync` pendentes -->
 - [x] Implementar autenticação + sessão.
-- [ ] Implementar CRUD de metas/hábitos.
+- [~] Implementar CRUD de metas/hábitos. <!-- metas + marcos prontos; hábitos pendentes -->
+
 - [ ] Implementar motor de XP/streak no domínio.
 - [ ] Implementar sync `push/pull` com idempotência.
 - [ ] Implementar observabilidade mínima (logs + métricas + healthchecks).

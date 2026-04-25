@@ -16,6 +16,7 @@ import {
 import { View } from 'react-native';
 
 import { AuthProvider } from '@/auth/AuthContext';
+import { GoalsProvider } from '@/goals/GoalsContext';
 import { AppNavigator } from '@/navigation/AppNavigator';
 import { ThemeProvider } from '@/theme/ThemeContext';
 
@@ -38,8 +39,10 @@ export default function App() {
     <SafeAreaProvider>
       <ThemeProvider initialMode="dark" initialAccent={180}>
         <AuthProvider>
-          <StatusBar style="light" />
-          <AppNavigator />
+          <GoalsProvider>
+            <StatusBar style="light" />
+            <AppNavigator />
+          </GoalsProvider>
         </AuthProvider>
       </ThemeProvider>
     </SafeAreaProvider>

@@ -18,6 +18,7 @@ model User {
   sessions            Session[]
   refreshTokens       RefreshToken[]
   passwordResetTokens PasswordResetToken[]
+  goals               Goal[]
 
   @@map("users")
 }

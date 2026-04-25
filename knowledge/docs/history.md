@@ -9,6 +9,94 @@ Formato: uma seção por entrega, do mais recente para o mais antigo.
 
 ---
 
+## 2026-04-25 — Metas (CRUD + marcos) e integração no app
+
+Branch: `claude/goal-management-backend-ZFeoS`
+
+### Escopo
+
+Fechamento de §2.2 (Metas) do `README_BACKEND.md`:
+
+- Criar meta nos quatro tipos previstos (`HABIT`, `DEADLINE`, `NUMERIC`,
+  `PROJECT`) com validação dos campos obrigatórios por tipo.
+- Editar meta (título, descrição, categoria, prazo, alvo, frequência);
+  edição bloqueada (409) quando a meta está arquivada.
+- Arquivar / desarquivar (somente leitura quando arquivada).
+- Excluir com retenção de histórico via **soft-delete** (`deletedAt`); a meta
+  some das listagens padrão mas é recuperável com `?includeDeleted=true`.
+- Gerenciar marcos: criar, atualizar, alternar `done` (com `completedAt`),
+  reordenar (`order`) e remover. Cada mutação recalcula `progress` da meta.
+
+### Prisma — novos models
+
+`server/api/prisma/schemas/goal.prisma`:
+
+- `Goal` — `id`, `userId`, `title`, `description`, `category`, `type` (enum
+  `GoalType`), `icon`, `color`, `deadline`, `targetValue`/`targetUnit`,
+  `frequency` (enum `GoalFrequency`), `progress` (0..1), `archivedAt`,
+  `deletedAt`, timestamps. Índices em `userId`, `(userId, archivedAt)`,
+  `(userId, deletedAt)`.
+- `Milestone` — `id`, `goalId`, `title`, `date`, `done`, `xp`, `order`,
+  `completedAt`, timestamps. Índices em `goalId` e `(goalId, order)`.
+
+`schemas/user.prisma` ganha a relação `goals: Goal[]`.
+
+### NestJS — módulo `goals`
+
+`server/api/src/modules/goals/`:
+
+- **DTOs** com `class-validator`: `CreateGoalDto`, `UpdateGoalDto`,
+  `CreateMilestoneDto`, `UpdateMilestoneDto`, `ListGoalsQuery`.
+- **`GoalsService`** concentra as regras: validação por tipo, soft-delete,
+  bloqueio em metas arquivadas, recálculo de `progress` (fração de marcos
+  concluídos) a cada mutação de marco.
+- **`GoalsController`** expõe os endpoints abaixo, todos protegidos por
+  `JwtAuthGuard` e usando `@CurrentUser()`:
+  - `GET /goals?archived=&includeDeleted=`
+  - `POST /goals`
+  - `GET /goals/:id`
+  - `PATCH /goals/:id`
+  - `DELETE /goals/:id`
+  - `POST /goals/:id/archive`
+  - `POST /goals/:id/unarchive`
+  - `POST /goals/:id/milestones`
+  - `PATCH /goals/:id/milestones/:milestoneId`
+  - `DELETE /goals/:id/milestones/:milestoneId`
+
+`UsersService.exportData` agora inclui as metas (com marcos) no JSON LGPD.
+
+### Contrato OpenAPI
+
+`server/contracts/openapi.yaml` ganha a tag `goals`, todos os paths acima e
+os schemas `Goal`, `GoalExport`, `Milestone`, `GoalType`, `GoalFrequency`,
+`CreateGoalRequest`, `UpdateGoalRequest`, `CreateMilestoneRequest`,
+`UpdateMilestoneRequest`. `UserDataExport` referencia `GoalExport`.
+
+### Front-end
+
+- `src/services/goals.service.ts` — cliente HTTP por endpoint.
+- `src/goals/GoalsContext.tsx` — provider/hook com cache em memória,
+  recarregamento automático no login, mutações otimistas via `replaceGoal`.
+- `src/goals/adapters.ts` — `goalToLegacy` mantém compatível o `Goal` antigo
+  consumido pelas telas.
+- `App.tsx` envolve o app em `<GoalsProvider>`.
+- `src/navigation/AppNavigator.tsx` injeta `goals` reais (filtrando
+  arquivadas) no `state` mockado e usa o contexto para alternar marcos.
+- `src/screens/CreateGoal.tsx` chama `createGoal` com payload tipado;
+  enums alinhados ao backend.
+- `src/screens/GoalDetail.tsx` recebe `goalId`, expõe ações reais de
+  arquivar/desarquivar e excluir.
+
+### Itens do `README_BACKEND.md` cobertos
+
+- §2.2 Metas — todos os bullets.
+- §5.1 Módulos — `goals` marcado como pronto.
+- §7 Modelo de dados — `goals` e `milestones` marcados.
+- §8.2 Goals — endpoints `GET`, `POST`, `GET/:id`, `PATCH`, `DELETE`,
+  `archive`, `unarchive`, e milestones (`POST/PATCH/DELETE`).
+
+---
+
 ## 2026-04-24 — Sessões por dispositivo, recuperação de senha e LGPD
 
 Branch: `claude/auth-session-management-fX3bD`

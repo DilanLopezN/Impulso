@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 
 import { validateEnv } from './config/env.validation';
 import { AuthModule } from './modules/auth/auth.module';
+import { GoalsModule } from './modules/goals/goals.module';
 import { HealthModule } from './modules/health/health.module';
 import { PrismaModule } from './modules/prisma/prisma.module';
 import { SessionsModule } from './modules/sessions/sessions.module';
@@ -19,6 +20,7 @@ import { UsersModule } from './modules/users/users.module';
     AuthModule,
     UsersModule,
     SessionsModule,
+    GoalsModule,
     HealthModule,
   ],
 })

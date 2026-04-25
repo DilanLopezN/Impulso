@@ -1,0 +1,73 @@
+// Domain: goals
+// Goals describe what a user wants to accomplish. They come in four shapes:
+//   - HABIT     repeating cadence with streaks (no fixed end date)
+//   - DEADLINE  must be reached before `deadline`
+//   - NUMERIC   counted toward `targetValue` (e.g. R$ 15.000, 100 km)
+//   - PROJECT   broken down into ordered milestones
+// A goal can have any number of `Milestone`s regardless of type — they exist
+// for richer tracking (sub-tasks, project phases, weight-loss checkpoints).
+//
+// Soft-delete (`deletedAt`) and archival (`archivedAt`) are independent: an
+// archived goal is read-only but still listed; a deleted goal is hidden but
+// retained for historical/audit reasons (RF retenção de histórico).
+
+enum GoalType {
+  HABIT
+  DEADLINE
+  NUMERIC
+  PROJECT
+}
+
+enum GoalFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+  CUSTOM
+}
+
+model Goal {
+  id          String    @id @default(uuid())
+  userId      String    @map("user_id")
+  title       String
+  description String?
+  category    String?
+  type        GoalType
+  icon        String?
+  color       String?
+  deadline    DateTime?
+  targetValue Float?    @map("target_value")
+  targetUnit  String?   @map("target_unit")
+  frequency   GoalFrequency?
+  progress    Float     @default(0)
+  archivedAt  DateTime? @map("archived_at")
+  deletedAt   DateTime? @map("deleted_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  milestones Milestone[]
+
+  @@index([userId])
+  @@index([userId, archivedAt])
+  @@index([userId, deletedAt])
+  @@map("goals")
+}
+
+model Milestone {
+  id          String    @id @default(uuid())
+  goalId      String    @map("goal_id")
+  title       String
+  date        DateTime?
+  done        Boolean   @default(false)
+  xp          Int       @default(0)
+  order       Int       @default(0)
+  completedAt DateTime? @map("completed_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  goal Goal @relation(fields: [goalId], references: [id], onDelete: Cascade)
+
+  @@index([goalId])
+  @@index([goalId, order])
+  @@map("milestones")
+}

@@ -32,6 +32,9 @@ Documento vivo com tudo que foi/é feito no app (React Native + Expo).
 | `src/services/password.service.ts`       | Chamadas de `/auth/password/forgot` e `/auth/password/reset`. |
 | `src/services/sessions.service.ts`       | Chamadas de `/sessions` (listar, revogar uma, revogar outras). |
 | `src/services/account.service.ts`        | Chamadas LGPD: `/users/me/export` (portabilidade) e `DELETE /users/me`. |
+| `src/services/goals.service.ts`          | Cliente HTTP do módulo `goals` (CRUD de metas + marcos, archive/unarchive, soft-delete). |
+| `src/goals/GoalsContext.tsx`             | Provider + hook `useGoals()`. Mantém `goals` em memória, recarrega no login, expõe `createGoal`, `updateGoal`, `archiveGoal`, `unarchiveGoal`, `deleteGoal` e mutações de marcos (`addMilestone`, `toggleMilestone`, `updateMilestone`, `removeMilestone`). |
+| `src/goals/adapters.ts`                  | `goalToLegacy(GoalView)` traduz o modelo do backend para o `Goal` que as telas atuais consomem (datas em PT-BR curtas, `daysLeft`, soma de XP por marco). |
 | `src/auth/AuthContext.tsx`               | Provider + hook `useAuth()`. Expõe agora também `requestPasswordReset`, `resetPassword`, `listSessions`, `revokeSession`, `revokeOtherSessions`, `exportMyData`, `deleteMyAccount`. |
 | `src/screens/Auth.tsx`                   | Tela de login/registro seguindo o design de `_legacy/screens/Auth.jsx`. **Atualizada:** o link "Esqueceu a senha?" agora dispara `POST /auth/password/forgot`. |
 | `src/screens/AccountSecurity.tsx`        | Tela "Conta e segurança": lista sessões ativas com botão de encerrar individual e em lote, exporta dados em JSON via `Share` e exclui a conta com confirmação por senha. |
@@ -40,8 +43,11 @@ Documento vivo com tudo que foi/é feito no app (React Native + Expo).
 
 | Caminho                                  | Mudança                                                |
 | ---------------------------------------- | ------------------------------------------------------ |
-| `App.tsx`                                | Envolve `AppNavigator` em `<AuthProvider>`.            |
-| `src/navigation/AppNavigator.tsx`        | Decide entre `Auth` → `Onboarding (boas-vindas)` → app, com base em `useAuth()`. Sincroniza `state.name` com `user.displayName` após login. **Atualizado:** registra a rota `security` para a tela `AccountSecurity`. |
+| `App.tsx`                                | Envolve `AppNavigator` em `<AuthProvider>` e `<GoalsProvider>`. |
+| `src/navigation/AppNavigator.tsx`        | Decide entre `Auth` → `Onboarding (boas-vindas)` → app, com base em `useAuth()`. Sincroniza `state.name` com `user.displayName` após login. **Atualizado:** registra a rota `security`; usa `useGoals()` para popular `state.goals` (filtrando arquivadas) e `toggleMilestone` agora chama o backend via contexto. |
+| `src/screens/CreateGoal.tsx`             | **Atualizada:** monta `CreateGoalPayload` a partir do form e chama `useGoals().createGoal`. Tipos passam a usar os enums do backend (`HABIT`/`DEADLINE`/`NUMERIC`/`PROJECT`). Exibe loading/erro durante o `POST /goals`. |
+| `src/screens/GoalDetail.tsx`             | **Atualizada:** recebe `goalId`, expõe ações reais de **arquivar/desarquivar** e **excluir** chamando `useGoals()`. Toggle de marco usa o `id` real e chama `PATCH /goals/:id/milestones/:milestoneId`. |
+| `src/screens/Home.tsx`                   | Protege contra divisão por zero quando o usuário ainda não tem metas. |
 | `src/screens/Profile.tsx`                | Itens "Sair" e novo "Conta e segurança" no menu.       |
 | `src/screens/index.ts`                   | Exporta `Auth` e `AccountSecurity`.                    |
 | `src/services/api.ts`                    | Adiciona `WORKERS_BASE_URL` e força leitura de URLs do `.env`. |
@@ -124,6 +130,29 @@ Acessada via Perfil → "Conta e segurança". Reúne 3 fluxos:
 3. **Excluir minha conta** — abre modal pedindo senha; chama
    `DELETE /users/me` com confirmação. Em sucesso, o `AuthContext` limpa
    tokens e o `AppNavigator` redireciona automaticamente para a tela `Auth`.
+
+## Metas (`/goals`)
+
+A partir desta entrega o app conversa com o módulo `goals` do back-end:
+
+- **Criação** (`CreateGoal`) faz `POST /goals` com `type` derivado da etapa 2,
+  e `category`/`icon`/`color` do cartão escolhido na etapa 1. O alvo numérico
+  da etapa 3 vira `targetValue`/`targetUnit` para `NUMERIC`, prazo (dias) é
+  convertido em ISO para `DEADLINE`, e `frequency` (DAILY/WEEKLY/MONTHLY) é
+  usado em `HABIT`.
+- **Listagem** acontece via `GoalsProvider`, que carrega ao autenticar e
+  expõe `goals` em memória; `AppNavigator` filtra `archivedAt != null` antes
+  de passar para Home/Profile.
+- **Marcos**: o toggle no `GoalDetail` agora chama
+  `PATCH /goals/:id/milestones/:milestoneId` com `{ done }`. O backend
+  recalcula `progress` e devolve a meta inteira — o contexto substitui a
+  versão local.
+- **Arquivar / Excluir** ficam nas ações do `GoalDetail`. Excluir usa
+  soft-delete (mantém histórico) e a meta sai imediatamente da lista local.
+- **Adapter `goalToLegacy`** preserva a UI atual: traduz datas ISO para o
+  formato curto em PT-BR (`15 Jun`), calcula `daysLeft` a partir do
+  `deadline`, escolhe o próximo marco como `next` e soma XP de marcos para
+  `xp/xpTotal`.
 
 ## Pendências conhecidas
 
