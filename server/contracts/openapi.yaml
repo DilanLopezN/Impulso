@@ -21,6 +21,10 @@ tags:
     description: Gestão de sessões ativas por dispositivo.
   - name: goals
     description: CRUD de metas (hábito/prazo/numérica/projeto) e marcos.
+  - name: habits
+    description: CRUD de hábitos, check-ins idempotentes e ajuste de histórico.
+  - name: gamification
+    description: XP, nível, ranking pessoal e conquistas.
   - name: health
     description: Probes de saúde.
 
@@ -592,6 +596,372 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
 
+  /habits:
+    get:
+      tags: [habits]
+      summary: Lista os hábitos do usuário
+      operationId: habitsList
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: archived
+          required: false
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: Lista de hábitos com streak e progresso semanal calculados.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Habit' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [habits]
+      summary: Cria um hábito
+      operationId: habitsCreate
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateHabitRequest' }
+      responses:
+        '201':
+          description: Hábito criado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Habit' }
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /habits/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [habits]
+      summary: Detalhe do hábito
+      operationId: habitsGet
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Hábito
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Habit' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Hábito não encontrado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    patch:
+      tags: [habits]
+      summary: Atualiza um hábito (gera trilha de auditoria)
+      operationId: habitsUpdate
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateHabitRequest' }
+      responses:
+        '200':
+          description: Hábito atualizado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Habit' }
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Hábito não encontrado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: Hábito arquivado (somente leitura)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    delete:
+      tags: [habits]
+      summary: Soft-delete do hábito (preserva histórico)
+      operationId: habitsDelete
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Hábito removido
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Hábito não encontrado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /habits/{id}/archive:
+    post:
+      tags: [habits]
+      summary: Arquiva o hábito (somente leitura)
+      operationId: habitsArchive
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Hábito arquivado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Habit' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Hábito não encontrado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /habits/{id}/unarchive:
+    post:
+      tags: [habits]
+      summary: Remove o arquivamento do hábito
+      operationId: habitsUnarchive
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Hábito desarquivado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Habit' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Hábito não encontrado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /habits/{id}/checkin:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [habits]
+      summary: Marca conclusão do hábito (idempotente por dia)
+      description: |
+        Marca o hábito como concluído na data informada (ou hoje, no fuso do
+        usuário). A operação é idempotente: chamadas repetidas para o mesmo
+        `(habitId, date)` não geram XP em duplicidade — a chave de
+        idempotência é `HABIT_CHECKIN:<habitId>:<date>` no `xp_ledger`.
+      operationId: habitsCheckin
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateCheckinRequest' }
+      responses:
+        '200':
+          description: Hábito atualizado (com novo streak/progresso semanal)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Habit' }
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Hábito não encontrado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: Hábito arquivado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    delete:
+      tags: [habits]
+      summary: Desfaz a conclusão do dia (compensa XP via ledger)
+      operationId: habitsUndoCheckin
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: date
+          required: false
+          description: Data alvo (YYYY-MM-DD). Padrão é hoje, no fuso do usuário.
+          schema: { type: string, pattern: '^\d{4}-\d{2}-\d{2}$' }
+      responses:
+        '200':
+          description: Hábito atualizado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Habit' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Hábito não encontrado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /habits/{id}/checkin/adjust:
+    post:
+      tags: [habits]
+      summary: Ajuste manual de histórico (com trilha de auditoria)
+      description: |
+        Permite criar ou remover a conclusão de um dia passado. Cada
+        chamada gera uma linha em `habit_audit_log` com o motivo e a data
+        de referência, preservando a rastreabilidade exigida pelo RF
+        "ajuste manual de histórico".
+      operationId: habitsAdjustCheckin
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AdjustCheckinRequest' }
+      responses:
+        '200':
+          description: Hábito atualizado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Habit' }
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Hábito não encontrado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /habits/{id}/checkins:
+    get:
+      tags: [habits]
+      summary: Lista os check-ins de um hábito
+      operationId: habitsListCheckins
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+        - in: query
+          name: from
+          schema: { type: string, format: date }
+        - in: query
+          name: to
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Lista de check-ins (mais recentes primeiro)
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/HabitCheckin' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Hábito não encontrado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /profile/summary:
+    get:
+      tags: [gamification]
+      summary: Resumo de gamificação do usuário (XP, nível, streak)
+      operationId: profileSummary
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Resumo
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProfileSummary' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /gamification/ledger:
+    get:
+      tags: [gamification]
+      summary: Histórico paginado de eventos de pontuação
+      operationId: gamificationLedger
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 200 }
+        - in: query
+          name: cursor
+          schema: { type: string }
+      responses:
+        '200':
+          description: Página do ledger
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/XpLedgerPage' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /achievements:
+    get:
+      tags: [gamification]
+      summary: Lista conquistas (com flag de desbloqueio)
+      operationId: achievementsList
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Catálogo + status do usuário
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Achievement' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -896,3 +1266,210 @@ components:
       properties:
         user: { $ref: '#/components/schemas/PublicUser' }
         tokens: { $ref: '#/components/schemas/AuthTokens' }
+
+    HabitFrequency:
+      type: string
+      enum: [DAILY, WEEKLY, CUSTOM]
+
+    Habit:
+      type: object
+      required:
+        - id
+        - title
+        - frequency
+        - weekdays
+        - targetPerWeek
+        - xpPerCheckin
+        - todayDone
+        - streak
+        - weekDone
+        - weekTarget
+        - createdAt
+        - updatedAt
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        icon: { type: string, nullable: true }
+        color: { type: string, nullable: true }
+        frequency: { $ref: '#/components/schemas/HabitFrequency' }
+        weekdays:
+          type: array
+          description: 'Dias da semana (0=Dom..6=Sáb) para hábitos CUSTOM.'
+          items: { type: integer, minimum: 0, maximum: 6 }
+        targetPerWeek:
+          type: integer
+          minimum: 1
+          maximum: 7
+          description: 'Meta de check-ins por semana (usado em frequência WEEKLY).'
+        xpPerCheckin: { type: integer, minimum: 0 }
+        archivedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        todayDone:
+          type: boolean
+          description: 'Conclusão da data atual (no fuso do usuário).'
+        streak:
+          type: integer
+          minimum: 0
+          description: 'Sequência atual computada a partir dos check-ins.'
+        weekDone:
+          type: integer
+          minimum: 0
+        weekTarget:
+          type: integer
+          minimum: 1
+
+    HabitCheckin:
+      type: object
+      required: [id, habitId, date, xpAwarded, source, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        habitId: { type: string, format: uuid }
+        date:
+          type: string
+          format: date
+          description: 'YYYY-MM-DD no fuso do usuário no momento da marcação.'
+        note: { type: string, nullable: true }
+        xpAwarded: { type: integer, minimum: 0 }
+        source:
+          type: string
+          description: 'Origem da marcação: user | manual_adjustment | sync.'
+        createdAt: { type: string, format: date-time }
+
+    CreateHabitRequest:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 120 }
+        description: { type: string, maxLength: 2000 }
+        icon: { type: string, maxLength: 40 }
+        color: { type: string, description: 'Cor hexadecimal (ex.: #F2947A).' }
+        frequency: { $ref: '#/components/schemas/HabitFrequency' }
+        weekdays:
+          type: array
+          maxItems: 7
+          items: { type: integer, minimum: 0, maximum: 6 }
+        targetPerWeek: { type: integer, minimum: 1, maximum: 7 }
+        xpPerCheckin: { type: integer, minimum: 0, maximum: 1000 }
+
+    UpdateHabitRequest:
+      type: object
+      properties:
+        title: { type: string, minLength: 1, maxLength: 120 }
+        description: { type: string, maxLength: 2000, nullable: true }
+        icon: { type: string, maxLength: 40, nullable: true }
+        color: { type: string, nullable: true }
+        frequency: { $ref: '#/components/schemas/HabitFrequency' }
+        weekdays:
+          type: array
+          maxItems: 7
+          items: { type: integer, minimum: 0, maximum: 6 }
+        targetPerWeek: { type: integer, minimum: 1, maximum: 7 }
+        xpPerCheckin: { type: integer, minimum: 0, maximum: 1000 }
+
+    CreateCheckinRequest:
+      type: object
+      properties:
+        date:
+          type: string
+          pattern: '^\d{4}-\d{2}-\d{2}$'
+          description: 'YYYY-MM-DD. Padrão: hoje no fuso do usuário.'
+        note: { type: string, maxLength: 280 }
+
+    AdjustCheckinRequest:
+      type: object
+      required: [date, done]
+      properties:
+        date:
+          type: string
+          pattern: '^\d{4}-\d{2}-\d{2}$'
+        done:
+          type: boolean
+          description: '`true` para marcar a data; `false` para remover.'
+        reason: { type: string, maxLength: 280 }
+
+    XpEventType:
+      type: string
+      enum:
+        - HABIT_CHECKIN
+        - HABIT_CHECKIN_REVERTED
+        - MILESTONE_COMPLETED
+        - MILESTONE_REVERTED
+        - GOAL_COMPLETED
+        - ACHIEVEMENT_UNLOCKED
+        - MANUAL_ADJUSTMENT
+
+    XpLedgerEntry:
+      type: object
+      required: [id, type, amount, occurredAt]
+      properties:
+        id: { type: string, format: uuid }
+        type: { $ref: '#/components/schemas/XpEventType' }
+        amount:
+          type: integer
+          description: 'Pode ser negativo (compensação por reversão).'
+        sourceType: { type: string, nullable: true }
+        sourceId: { type: string, nullable: true }
+        metadata:
+          type: object
+          additionalProperties: true
+          nullable: true
+        occurredAt: { type: string, format: date-time }
+
+    XpLedgerPage:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/XpLedgerEntry' }
+        nextCursor:
+          type: string
+          nullable: true
+
+    ProfileSummary:
+      type: object
+      required:
+        - userId
+        - totalXp
+        - level
+        - xpIntoLevel
+        - xpToNext
+        - longestStreak
+        - achievementsUnlocked
+        - updatedAt
+      properties:
+        userId: { type: string, format: uuid }
+        totalXp: { type: integer, minimum: 0 }
+        level: { type: integer, minimum: 1 }
+        xpIntoLevel: { type: integer, minimum: 0 }
+        xpToNext: { type: integer, minimum: 0 }
+        longestStreak: { type: integer, minimum: 0 }
+        achievementsUnlocked: { type: integer, minimum: 0 }
+        updatedAt: { type: string, format: date-time }
+
+    AchievementCategory:
+      type: string
+      enum: [HABITS, GOALS, STREAKS, XP, SPECIAL]
+
+    Achievement:
+      type: object
+      required:
+        - id
+        - code
+        - title
+        - description
+        - category
+        - xpReward
+        - unlocked
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string }
+        title: { type: string }
+        description: { type: string }
+        category: { $ref: '#/components/schemas/AchievementCategory' }
+        icon: { type: string, nullable: true }
+        xpReward: { type: integer, minimum: 0 }
+        unlocked: { type: boolean }
+        unlockedAt: { type: string, format: date-time, nullable: true }
