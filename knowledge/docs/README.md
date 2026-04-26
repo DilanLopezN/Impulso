@@ -4,6 +4,8 @@ App mobile de metas, hábitos e gamificação construído com **Expo + React Nat
 
 > **Status atual:** o projeto está com **interface muito bem evoluída** e uma camada inicial de estado local para prototipação, porém ainda sem a lógica de domínio completa (persistência, regras de XP/streak, autenticação, backend e sincronização).
 
+> Guia complementar para evolução social (Node + Go): `knowledge/docs/README_SOCIAL_AI.md`
+
 ## 1) Visão do sistema (mapeamento funcional completo)
 
 ### 1.1 Objetivo do produto
