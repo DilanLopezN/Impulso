@@ -1,0 +1,108 @@
+// Domain: habits
+// A habit is a recurring intention with a configurable cadence. Each
+// completion is registered as a `HabitCheckin` row keyed by the local
+// calendar day in the user's timezone. The pair `(habitId, date)` is unique
+// — that is what makes "marcar conclusão" idempotent: the same request twice
+// in the same day collapses to a single ledger entry.
+//
+// Streak and progress are not stored on the habit itself: they are computed
+// from the underlying check-ins so that historical adjustments are always
+// reflected without needing to denormalise.
+//
+// Manual adjustments to history (backfill, correction) are written through
+// `HabitAuditLog` so the trail of who/why/when is preserved alongside the
+// effective check-in mutation.
+
+enum HabitFrequency {
+  DAILY
+  WEEKLY
+  CUSTOM
+}
+
+enum HabitAuditAction {
+  CREATE_CHECKIN
+  DELETE_CHECKIN
+  EDIT_HABIT
+  ARCHIVE
+  UNARCHIVE
+}
+
+model Habit {
+  id           String         @id @default(uuid())
+  userId       String         @map("user_id")
+  title        String
+  description  String?
+  icon         String?
+  color        String?
+  frequency    HabitFrequency @default(DAILY)
+  // For CUSTOM frequency: bitmask 0..6 (Sun..Sat) of weekdays the habit is due.
+  // Stored as int[] to keep readability in raw SQL/Prisma.
+  weekdays     Int[]          @default([])
+  // For WEEKLY frequency: how many check-ins fulfil one week (default 1).
+  targetPerWeek Int           @default(1) @map("target_per_week")
+  // XP awarded by the gamification engine on each successful check-in.
+  xpPerCheckin Int            @default(10) @map("xp_per_checkin")
+  archivedAt   DateTime?      @map("archived_at")
+  deletedAt    DateTime?      @map("deleted_at")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  checkins  HabitCheckin[]
+  auditLogs HabitAuditLog[]
+
+  @@index([userId])
+  @@index([userId, archivedAt])
+  @@index([userId, deletedAt])
+  @@map("habits")
+}
+
+model HabitCheckin {
+  id        String   @id @default(uuid())
+  habitId   String   @map("habit_id")
+  userId    String   @map("user_id")
+  // Calendar date in the user's timezone at completion time. Stored as a
+  // `@db.Date` so arithmetic on day boundaries is unambiguous regardless of
+  // UTC offset.
+  date      DateTime @db.Date
+  note      String?
+  // Materialised XP awarded at the moment of the check-in (0 when undone is
+  // re-applied with `compensateXp = false`). Kept here for fast aggregations
+  // without joining the ledger.
+  xpAwarded Int      @default(0) @map("xp_awarded")
+  source    String   @default("user") // user | manual_adjustment | sync
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  habit Habit @relation(fields: [habitId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Idempotency guarantee: at most one check-in per habit per day.
+  @@unique([habitId, date])
+  @@index([userId, date])
+  @@index([habitId, date])
+  @@map("habit_checkins")
+}
+
+// Manual history adjustments. Every mutation that bypasses the normal
+// "marcar hoje" flow leaves a trail with the actor, the reason and the
+// before/after payload, so we can answer "quem mexeu nisso?".
+model HabitAuditLog {
+  id        String           @id @default(uuid())
+  habitId   String           @map("habit_id")
+  userId    String           @map("user_id")
+  action    HabitAuditAction
+  // ISO date string when the audit refers to a specific check-in day; nullable
+  // for habit-level edits (e.g. archive).
+  refDate   DateTime?        @map("ref_date") @db.Date
+  reason    String?
+  metadata  Json?
+  createdAt DateTime         @default(now()) @map("created_at")
+
+  habit Habit @relation(fields: [habitId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([habitId, createdAt])
+  @@index([userId, createdAt])
+  @@map("habit_audit_log")
+}

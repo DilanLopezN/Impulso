@@ -1,0 +1,143 @@
+// Domain: gamification
+// XP is the canonical currency of progress. Every domain event that should
+// reward (or compensate) the user produces an `XpLedger` entry. The user's
+// total XP is ALWAYS `SUM(xp_ledger.amount WHERE userId = ...)` — it is never
+// stored as a denormalised counter on `users` so reprocessing remains
+// deterministic and consistent.
+//
+// `idempotencyKey` is the contract for "no double-points": every event source
+// (e.g. `HABIT_CHECKIN:<habitId>:<date>`) builds a stable key, the unique
+// index makes a re-emit a no-op.
+//
+// Achievements are configurable rules persisted in `Achievement`. Unlocks are
+// tracked in `UserAchievement` (one row per (user, achievement) pair). The
+// rules engine evaluates configured predicates against the ledger / habit
+// data after each domain event.
+
+enum XpEventType {
+  HABIT_CHECKIN
+  HABIT_CHECKIN_REVERTED
+  MILESTONE_COMPLETED
+  MILESTONE_REVERTED
+  GOAL_COMPLETED
+  ACHIEVEMENT_UNLOCKED
+  MANUAL_ADJUSTMENT
+}
+
+enum AchievementCategory {
+  HABITS
+  GOALS
+  STREAKS
+  XP
+  SPECIAL
+}
+
+model XpLedger {
+  id             String      @id @default(uuid())
+  userId         String      @map("user_id")
+  type           XpEventType
+  amount         Int
+  // Stable key built by the producer (e.g. "HABIT_CHECKIN:<habitId>:<date>").
+  // Unique to make event re-processing idempotent — replaying the same event
+  // twice never grants XP twice.
+  idempotencyKey String      @map("idempotency_key")
+  // Free-form pointers back to the entity that triggered the event. Indexed
+  // for ledger inspection ("show me all XP I got from habit X").
+  sourceType     String?     @map("source_type")
+  sourceId       String?     @map("source_id")
+  // Version of the rule that calculated `amount`. Lets us reprocess history
+  // when the formula evolves without losing audit trail.
+  ruleVersion    Int         @default(1) @map("rule_version")
+  metadata       Json?
+  occurredAt     DateTime    @default(now()) @map("occurred_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Per-user idempotency. The key alone may not be globally unique because
+  // two different users might both check in habit `<id>:<date>` (different
+  // UUIDs — but composite is still safer).
+  @@unique([userId, idempotencyKey])
+  @@index([userId, occurredAt])
+  @@index([userId, type])
+  @@index([sourceType, sourceId])
+  @@map("xp_ledger")
+}
+
+// Snapshot table maintained by the engine for fast reads of the user's
+// gamification state. The numbers MUST be derivable from `xp_ledger`; this
+// table is a cache that the engine keeps in sync inside the same transaction
+// as the ledger insert.
+model UserGamificationProfile {
+  userId        String   @id @map("user_id")
+  totalXp       Int      @default(0) @map("total_xp")
+  level         Int      @default(1)
+  xpIntoLevel   Int      @default(0) @map("xp_into_level")
+  xpToNext      Int      @default(100) @map("xp_to_next")
+  longestStreak Int      @default(0) @map("longest_streak")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_gamification_profile")
+}
+
+model Achievement {
+  id          String              @id @default(uuid())
+  code        String              @unique
+  title       String
+  description String
+  category    AchievementCategory
+  icon        String?
+  // XP awarded the moment the achievement is unlocked. Recorded as an
+  // `ACHIEVEMENT_UNLOCKED` ledger entry.
+  xpReward    Int                 @default(0) @map("xp_reward")
+  // JSON-encoded predicate. Shape interpreted by the rules engine:
+  //   { "kind": "habit_streak", "threshold": 7 }
+  //   { "kind": "habit_count",  "threshold": 50 }
+  //   { "kind": "total_xp",     "threshold": 1000 }
+  //   { "kind": "goal_completed", "threshold": 1 }
+  rule        Json
+  active      Boolean             @default(true)
+  createdAt   DateTime            @default(now()) @map("created_at")
+  updatedAt   DateTime            @updatedAt @map("updated_at")
+
+  unlocks UserAchievement[]
+
+  @@map("achievements")
+}
+
+model UserAchievement {
+  id            String   @id @default(uuid())
+  userId        String   @map("user_id")
+  achievementId String   @map("achievement_id")
+  unlockedAt    DateTime @default(now()) @map("unlocked_at")
+  // Snapshot of the metric value at unlock time (e.g. streak length). Useful
+  // for displaying "you unlocked this with X" without recomputing.
+  snapshot      Json?
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievement Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, achievementId])
+  @@index([userId, unlockedAt])
+  @@map("user_achievements")
+}
+
+// Anti-fraude: rolling counters per (user, action, window). When the engine
+// detects N events of `action` for the user inside the configured window, it
+// either drops the event (without awarding XP) or flags it for review.
+// The window is identified by a discrete bucket key (e.g. "2026-04-26T15"
+// for an hourly window) so races resolve via PK conflict + atomic increment.
+model XpRateBucket {
+  userId    String   @map("user_id")
+  action    String
+  bucket    String
+  count     Int      @default(0)
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, action, bucket])
+  @@index([userId, action])
+  @@map("xp_rate_buckets")
+}

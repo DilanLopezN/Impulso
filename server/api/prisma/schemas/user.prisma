@@ -19,6 +19,13 @@ model User {
   refreshTokens       RefreshToken[]
   passwordResetTokens PasswordResetToken[]
   goals               Goal[]
+  habits              Habit[]
+  habitCheckins       HabitCheckin[]
+  habitAuditLogs      HabitAuditLog[]
+  xpLedger            XpLedger[]
+  gamificationProfile UserGamificationProfile?
+  achievements        UserAchievement[]
+  xpRateBuckets       XpRateBucket[]
 
   @@map("users")
 }

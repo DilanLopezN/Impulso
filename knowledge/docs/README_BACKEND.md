@@ -40,18 +40,18 @@ Este documento define a visão do **back-end** do Impulso com foco em regras de 
 > Front-end consome via `src/services/goals.service.ts` + `src/goals/GoalsContext.tsx`.
 
 ### 2.3 Hábitos
-- [ ] Criar hábito com periodicidade.
-- [ ] Marcar/desmarcar conclusão diária.
-- [ ] Recalcular sequência (streak) e progresso semanal.
-- [ ] Regras idempotentes para evitar pontuação duplicada.
-- [ ] Ajuste manual de histórico com trilha de auditoria.
+- [x] Criar hábito com periodicidade. <!-- `POST /habits` aceita DAILY/WEEKLY/CUSTOM (com `weekdays`/`targetPerWeek`). -->
+- [x] Marcar/desmarcar conclusão diária. <!-- `POST /habits/:id/checkin` (idempotente por `(habitId, date)`) e `DELETE /habits/:id/checkin`. -->
+- [x] Recalcular sequência (streak) e progresso semanal. <!-- `streak`/`weekDone`/`weekTarget` derivados dos check-ins no fuso do usuário. -->
+- [x] Regras idempotentes para evitar pontuação duplicada. <!-- Unique `(habit_id, date)` + `idempotencyKey` no `xp_ledger`. -->
+- [x] Ajuste manual de histórico com trilha de auditoria. <!-- `POST /habits/:id/checkin/adjust` grava em `habit_audit_log`. -->
 
 ### 2.4 Gamificação
-- [ ] Motor de XP por evento de domínio.
-- [ ] Cálculo de nível e `xpToNext`.
-- [ ] Conquistas por regras configuráveis.
-- [ ] Histórico de eventos de pontuação.
-- [ ] Anti-fraude básico (limites por janela temporal / detecção de padrão anômalo).
+- [x] Motor de XP por evento de domínio. <!-- `GamificationService.awardXp` com idempotência e compensação. -->
+- [x] Cálculo de nível e `xpToNext`. <!-- `levelFromXp` (curva 100 + 50·(L-1)) sincroniza `user_gamification_profile`. -->
+- [x] Conquistas por regras configuráveis. <!-- Catálogo declarativo em `achievements.catalog.ts`, avaliado a cada check-in. -->
+- [x] Histórico de eventos de pontuação. <!-- `xp_ledger` + `GET /gamification/ledger` paginado por cursor. -->
+- [x] Anti-fraude básico (limites por janela temporal / detecção de padrão anômalo). <!-- `xp_rate_buckets` aplica 60/min e 1500/h por usuário. -->
 
 ### 2.5 Ranking
 - [ ] Ranking por período (semanal, mensal, geral).
@@ -142,8 +142,8 @@ Este documento define a visão do **back-end** do Impulso com foco em regras de 
 - [x] `users` (perfil, exportação e exclusão LGPD)
 - [x] `sessions` (listar/revogar sessões por dispositivo)
 - [x] `goals` (metas e marcos)
-- [ ] `habits` (hábitos e check-ins)
-- [ ] `gamification` (XP, nível, conquistas)
+- [x] `habits` (hábitos e check-ins)
+- [x] `gamification` (XP, nível, conquistas)
 - [ ] `leaderboard` (ranking e snapshots)
 - [ ] `sync` (fila de mudanças e reconciliação)
 - [ ] `notifications` (push e lembretes)
@@ -197,12 +197,14 @@ Este documento define a visão do **back-end** do Impulso com foco em regras de 
 - [x] `password_reset_tokens` <!-- token SHA-256 hash, expiração curta, uso único -->
 - [x] `goals` <!-- soft-delete via `deletedAt`, arquivamento via `archivedAt` -->
 - [x] `milestones` <!-- ordenadas por `order`, recalcula `progress` da meta -->
-
-- [ ] `habits`
-- [ ] `habit_checkins` (evento diário)
-- [ ] `xp_ledger` (livro-razão de pontuação)
-- [ ] `achievements`
-- [ ] `user_achievements`
+- [x] `habits` <!-- `frequency` (DAILY/WEEKLY/CUSTOM), `weekdays`, soft-delete + archive -->
+- [x] `habit_checkins` (evento diário) <!-- unique `(habit_id, date)` garante idempotência por dia -->
+- [x] `habit_audit_log` <!-- trilha de auditoria de ajustes manuais -->
+- [x] `xp_ledger` (livro-razão de pontuação) <!-- unique `(user_id, idempotency_key)` -->
+- [x] `user_gamification_profile` <!-- snapshot de XP/level/streak mantido na mesma transação -->
+- [x] `achievements` <!-- regra em JSON, catálogo upsertado em runtime -->
+- [x] `user_achievements`
+- [x] `xp_rate_buckets` <!-- contadores de janelas para anti-fraude -->
 - [ ] `leaderboard_snapshots`
 - [ ] `operation_log` (sync)
 - [ ] `audit_log`
@@ -235,14 +237,22 @@ Este documento define a visão do **back-end** do Impulso com foco em regras de 
 - [x] `POST /goals/:id/milestones`
 - [x] `PATCH /goals/:id/milestones/:milestoneId` <!-- recalcula `progress` -->
 - [x] `DELETE /goals/:id/milestones/:milestoneId`
-- [ ] `POST /habits`
-- [ ] `POST /habits/:id/checkin`
-- [ ] `DELETE /habits/:id/checkin?date=YYYY-MM-DD`
+- [x] `GET /habits`
+- [x] `POST /habits`
+- [x] `GET /habits/:id`
+- [x] `PATCH /habits/:id`
+- [x] `DELETE /habits/:id`
+- [x] `POST /habits/:id/archive`
+- [x] `POST /habits/:id/unarchive`
+- [x] `POST /habits/:id/checkin` <!-- idempotente por `(habitId, date)` -->
+- [x] `DELETE /habits/:id/checkin?date=YYYY-MM-DD` <!-- compensa XP via ledger -->
+- [x] `GET /habits/:id/checkins`
+- [x] `POST /habits/:id/checkin/adjust` <!-- ajuste manual com auditoria -->
 
 ### 8.3 Gamification / Profile / Ranking
-- [ ] `GET /profile/summary`
-- [ ] `GET /gamification/ledger`
-- [ ] `GET /achievements`
+- [x] `GET /profile/summary`
+- [x] `GET /gamification/ledger`
+- [x] `GET /achievements`
 - [ ] `GET /leaderboard?scope=global&period=weekly`
 
 ### 8.4 Sync
@@ -255,11 +265,10 @@ Este documento define a visão do **back-end** do Impulso com foco em regras de 
 ## 9) Backlog por prioridade
 
 ### P0 — Base obrigatória
-- [ ] Definir contratos de API (OpenAPI). <!-- `contracts/openapi.yaml` cobre `auth`, `users`, `sessions` e `goals`; `habits`/`gamification`/`sync` pendentes -->
+- [~] Definir contratos de API (OpenAPI). <!-- `contracts/openapi.yaml` cobre `auth`, `users`, `sessions`, `goals`, `habits` e `gamification`; `sync`/`leaderboard` pendentes -->
 - [x] Implementar autenticação + sessão.
-- [~] Implementar CRUD de metas/hábitos. <!-- metas + marcos prontos; hábitos pendentes -->
-
-- [ ] Implementar motor de XP/streak no domínio.
+- [x] Implementar CRUD de metas/hábitos.
+- [x] Implementar motor de XP/streak no domínio.
 - [ ] Implementar sync `push/pull` com idempotência.
 - [ ] Implementar observabilidade mínima (logs + métricas + healthchecks).
 
