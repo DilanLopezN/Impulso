@@ -4,9 +4,10 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { useAuth } from '@/auth/AuthContext';
 import { Celebration, FAB, TabBar } from '@/components';
-import { initialState } from '@/data/seed';
+import { useGamification } from '@/gamification/GamificationContext';
 import { goalsToLegacy } from '@/goals/adapters';
 import { useGoals } from '@/goals/GoalsContext';
+import { useHabits } from '@/habits/HabitsContext';
 import {
   AccountSecurity,
   Achievements,
@@ -21,25 +22,20 @@ import {
   Rank,
 } from '@/screens';
 import { useTheme } from '@/theme/ThemeContext';
-import type { AppState, Route, TabId } from '@/types';
+import type { Route, TabId } from '@/types';
 
 export const AppNavigator = () => {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const { status, user, isFirstSession, completeWelcome } = useAuth();
   const { goals: remoteGoals, toggleMilestone: toggleMilestoneRemote } = useGoals();
+  const { refresh: refreshGamification } = useGamification();
+  const { habits } = useHabits();
 
-  const [state, setState] = useState<AppState>(initialState);
   const [route, setRoute] = useState<Route>('home');
   const [tab, setTab] = useState<TabId>('home');
   const [selectedGoalId, setSelectedGoalId] = useState<string | null>(null);
   const [celebrate, setCelebrate] = useState(false);
-
-  useEffect(() => {
-    if (status === 'authenticated' && user) {
-      setState((prev) => ({ ...prev, name: user.displayName }));
-    }
-  }, [status, user]);
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -49,38 +45,38 @@ export const AppNavigator = () => {
     }
   }, [status]);
 
+  // After habit/goal mutations affect XP, the gamification summary lags by
+  // exactly the time between mutation and next manual refresh. Re-pull it
+  // whenever the Profile or Achievements tab is opened so the numbers are
+  // fresh when the user actually looks at them.
+  useEffect(() => {
+    if (route === 'profile' || route === 'achievements' || route === 'home') {
+      void refreshGamification();
+    }
+  }, [route, refreshGamification]);
+
   const activeGoals = useMemo(
     () => remoteGoals.filter((g) => !g.archivedAt),
     [remoteGoals],
   );
   const legacyGoals = useMemo(() => goalsToLegacy(activeGoals), [activeGoals]);
-  const stateWithGoals = useMemo<AppState>(
-    () => ({ ...state, goals: legacyGoals }),
-    [state, legacyGoals],
-  );
 
-  const dispatch = (action: { type: 'toggle'; key: string }) => {
-    if (action.type === 'toggle') {
-      setState((s) => ({
-        ...s,
-        todayDone: Math.min(s.todayTotal, s.todayDone + 1),
-      }));
-      triggerCelebration();
+  // Re-pull gamification numbers whenever a habit's todayDone flips. This
+  // catches the XP delta from a check-in without requiring screens to know
+  // about the gamification context.
+  const todayDoneSignature = useMemo(
+    () => habits.map((h) => `${h.id}:${h.todayDone ? 1 : 0}`).join('|'),
+    [habits],
+  );
+  useEffect(() => {
+    if (status === 'authenticated') {
+      void refreshGamification();
     }
-  };
+  }, [todayDoneSignature, status, refreshGamification]);
 
   const triggerCelebration = () => {
     setCelebrate(true);
     setTimeout(() => setCelebrate(false), 2400);
-  };
-
-  const toggleHabit = (id: string) => {
-    setState((s) => ({
-      ...s,
-      habits: s.habits.map((h) =>
-        h.id === id ? { ...h, todayDone: !h.todayDone } : h,
-      ),
-    }));
   };
 
   const toggleMilestone = (idx: number) => {
@@ -88,9 +84,9 @@ export const AppNavigator = () => {
     const goal = remoteGoals.find((g) => g.id === selectedGoalId);
     const milestone = goal?.milestones[idx];
     if (!goal || !milestone) return;
-    void toggleMilestoneRemote(goal.id, milestone.id, !milestone.done).catch(() => {
-      // Failure surfaces via context error state; nothing else to do here.
-    });
+    void toggleMilestoneRemote(goal.id, milestone.id, !milestone.done).catch(
+      () => undefined,
+    );
   };
 
   const openGoal = (id: string) => {
@@ -104,6 +100,7 @@ export const AppNavigator = () => {
   };
 
   const currentGoal = legacyGoals.find((g) => g.id === selectedGoalId);
+  const displayName = user?.displayName ?? '';
 
   if (status === 'unauthenticated') {
     return (
@@ -162,9 +159,11 @@ export const AppNavigator = () => {
           />
         );
       case 'home':
-        return <Home state={stateWithGoals} dispatch={dispatch} openGoal={openGoal} />;
+        return (
+          <Home goals={legacyGoals} name={displayName} openGoal={openGoal} />
+        );
       case 'habits':
-        return <Habits habits={state.habits} toggleHabit={toggleHabit} />;
+        return <Habits />;
       case 'feed':
         return <Feed />;
       case 'achievements':
@@ -174,10 +173,9 @@ export const AppNavigator = () => {
       case 'profile':
         return (
           <Profile
-            state={stateWithGoals}
+            name={displayName}
             onOpenOnboarding={() => setRoute('onboarding')}
             onOpenSecurity={() => setRoute('security')}
-            onReset={() => setState(initialState)}
           />
         );
       case 'security':
