@@ -962,6 +962,38 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /rankings:
+    get:
+      tags: [gamification]
+      summary: Lista ranking por período/escopo (alimentado por worker Go + Redis)
+      operationId: rankingsList
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: period
+          schema: { $ref: '#/components/schemas/RankingPeriod' }
+        - in: query
+          name: scope
+          schema: { $ref: '#/components/schemas/RankingScope' }
+        - in: query
+          name: teamId
+          schema: { type: string, format: uuid }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 200 }
+        - in: query
+          name: offset
+          schema: { type: integer, minimum: 0 }
+      responses:
+        '200':
+          description: Página do ranking ordenada por desempate oficial
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RankingList' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1473,3 +1505,43 @@ components:
         xpReward: { type: integer, minimum: 0 }
         unlocked: { type: boolean }
         unlockedAt: { type: string, format: date-time, nullable: true }
+
+    RankingPeriod:
+      type: string
+      enum: [weekly, monthly, all_time]
+
+    RankingScope:
+      type: string
+      enum: [global, friends, team]
+
+    RankingEntry:
+      type: object
+      required:
+        - position
+        - userId
+        - displayName
+        - totalXp
+        - checkinsCount
+        - lastActivityAt
+      properties:
+        position: { type: integer, minimum: 1 }
+        userId: { type: string, format: uuid }
+        displayName: { type: string }
+        avatarUrl: { type: string, nullable: true }
+        totalXp: { type: integer }
+        checkinsCount: { type: integer, minimum: 0 }
+        lastActivityAt: { type: string, format: date-time }
+
+    RankingList:
+      type: object
+      required: [period, scope, generatedAt, tieBreakers, items]
+      properties:
+        period: { $ref: '#/components/schemas/RankingPeriod' }
+        scope: { $ref: '#/components/schemas/RankingScope' }
+        generatedAt: { type: string, format: date-time }
+        tieBreakers:
+          type: array
+          items: { type: string }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/RankingEntry' }
