@@ -16,7 +16,9 @@ import {
 import { View } from 'react-native';
 
 import { AuthProvider } from '@/auth/AuthContext';
+import { GamificationProvider } from '@/gamification/GamificationContext';
 import { GoalsProvider } from '@/goals/GoalsContext';
+import { HabitsProvider } from '@/habits/HabitsContext';
 import { AppNavigator } from '@/navigation/AppNavigator';
 import { ThemeProvider } from '@/theme/ThemeContext';
 
@@ -39,10 +41,14 @@ export default function App() {
     <SafeAreaProvider>
       <ThemeProvider initialMode="dark" initialAccent={180}>
         <AuthProvider>
-          <GoalsProvider>
-            <StatusBar style="light" />
-            <AppNavigator />
-          </GoalsProvider>
+          <GamificationProvider>
+            <GoalsProvider>
+              <HabitsProvider>
+                <StatusBar style="light" />
+                <AppNavigator />
+              </HabitsProvider>
+            </GoalsProvider>
+          </GamificationProvider>
         </AuthProvider>
       </ThemeProvider>
     </SafeAreaProvider>

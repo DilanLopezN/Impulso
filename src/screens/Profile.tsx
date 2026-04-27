@@ -13,31 +13,73 @@ import {
   Small,
 } from '@/components';
 import { useAuth } from '@/auth/AuthContext';
+import { useGamification } from '@/gamification/GamificationContext';
+import { useGoals } from '@/goals/GoalsContext';
+import { useHabits } from '@/habits/HabitsContext';
 import { useTheme } from '@/theme/ThemeContext';
-import type { AppState, IconName } from '@/types';
+import type { IconName } from '@/types';
 
 type ProfileProps = {
-  state: AppState;
-  onReset: () => void;
+  name: string;
   onOpenOnboarding: () => void;
   onOpenSecurity: () => void;
 };
 
+const formatXp = (n: number): string => {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(n);
+};
+
 export const Profile = ({
-  state,
-  onReset,
+  name,
   onOpenOnboarding,
   onOpenSecurity,
 }: ProfileProps) => {
   const { theme } = useTheme();
-  const { logout } = useAuth();
-  const { name, xp, level, xpToNext, streak } = state;
+  const { logout, user } = useAuth();
+  const { summary } = useGamification();
+  const { habits } = useHabits();
+  const { goals } = useGoals();
+
+  const level = summary?.level ?? 1;
+  const xp = summary?.xpIntoLevel ?? 0;
+  const xpToNext = (summary?.xpIntoLevel ?? 0) + (summary?.xpToNext ?? 100);
+  const streak = summary?.longestStreak ?? 0;
+  const totalXp = summary?.totalXp ?? 0;
+
+  const completedGoals = goals.filter((g) => g.progress >= 1).length;
+  const totalGoals = goals.length;
+  const activeHabits = habits.filter((h) => !h.archivedAt).length;
+
+  const memberSince = user?.createdAt
+    ? new Date(user.createdAt).toLocaleDateString('pt-BR', {
+        month: 'short',
+        year: 'numeric',
+      })
+    : '—';
 
   const stats = [
-    { label: 'METAS CONCLUÍDAS', value: '14', sub: 'de 18 criadas' },
-    { label: 'TAREFAS FEITAS', value: '247', sub: 'últimos 30 dias' },
-    { label: 'XP TOTAL', value: '4.2k', sub: `nível ${level}` },
-    { label: 'DIAS ATIVOS', value: '89', sub: 'desde jan/26' },
+    {
+      label: 'METAS CONCLUÍDAS',
+      value: String(completedGoals),
+      sub: `de ${totalGoals} criadas`,
+    },
+    {
+      label: 'HÁBITOS ATIVOS',
+      value: String(activeHabits),
+      sub: 'em rotina',
+    },
+    {
+      label: 'XP TOTAL',
+      value: formatXp(totalXp),
+      sub: `nível ${level}`,
+    },
+    {
+      label: 'CONQUISTAS',
+      value: String(summary?.achievementsUnlocked ?? 0),
+      sub: 'desbloqueadas',
+    },
   ];
 
   return (
@@ -125,9 +167,9 @@ export const Profile = ({
           </View>
         </View>
 
-        <H2 style={{ marginBottom: 4 }}>{name} Ribeiro</H2>
+        <H2 style={{ marginBottom: 4 }}>{name}</H2>
         <Small style={{ color: theme.ink[2] }}>
-          @{name.toLowerCase()} · Desde Janeiro de 2026
+          @{name.toLowerCase().replace(/\s+/g, '')} · Desde {memberSince}
         </Small>
 
         <View style={{ maxWidth: 240, width: '100%', marginTop: 16 }}>
@@ -215,10 +257,12 @@ export const Profile = ({
                 color: theme.ink[0],
               }}
             >
-              Sequência atual
+              Sequência mais longa
             </Body>
             <Mono style={{ color: theme.ink[3], fontSize: 12, marginTop: 2 }}>
-              Recorde: 31 dias · Continue mais 3 para superar
+              {streak > 0
+                ? `Você está em ${streak} dias consecutivos`
+                : 'Comece um hábito e construa sua sequência'}
             </Mono>
           </View>
           <Mono
@@ -267,13 +311,6 @@ export const Profile = ({
         </Card>
       </View>
 
-      <View style={{ alignItems: 'center', paddingTop: 6, paddingBottom: 6 }}>
-        <Pressable onPress={onReset} hitSlop={12} style={{ padding: 12 }}>
-          <Mono style={{ color: theme.ink[3], fontSize: 12 }}>
-            Reset dos dados demo
-          </Mono>
-        </Pressable>
-      </View>
     </ScrollView>
   );
 };

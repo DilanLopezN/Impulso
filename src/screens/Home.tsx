@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 
 import {
@@ -17,21 +17,64 @@ import {
   Small,
   WeekBars,
 } from '@/components';
+import { formatHeaderDate, weekDates } from '@/data/calendar';
+import { useGamification } from '@/gamification/GamificationContext';
+import { habitColor, habitIcon, longestStreakAcross } from '@/habits/adapters';
+import { useHabits } from '@/habits/HabitsContext';
 import { useTheme } from '@/theme/ThemeContext';
-import type { AppState, Goal, IconName } from '@/types';
+import type { Goal, IconName, WeekDay } from '@/types';
 
-type Action = { type: 'toggle'; key: string };
+const WEEK_LABELS = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
 
 type HomeProps = {
-  state: AppState;
-  dispatch: (action: Action) => void;
+  goals: Goal[];
+  name: string;
   openGoal: (id: string) => void;
 };
 
-export const Home = ({ state, dispatch, openGoal }: HomeProps) => {
+export const Home = ({ goals, name, openGoal }: HomeProps) => {
   const { theme } = useTheme();
-  const { goals, streak, xp, level, xpToNext, todayDone, todayTotal, weekDays, name } =
-    state;
+  const { habits, checkinsByHabit, toggleCheckin } = useHabits();
+  const { summary, xpToday } = useGamification();
+
+  const activeHabits = useMemo(
+    () => habits.filter((h) => !h.archivedAt),
+    [habits],
+  );
+
+  const todayHabits = useMemo(() => activeHabits.slice(0, 3), [activeHabits]);
+  const todayDone = useMemo(
+    () => activeHabits.filter((h) => h.todayDone).length,
+    [activeHabits],
+  );
+  const todayTotal = activeHabits.length;
+
+  const level = summary?.level ?? 1;
+  const xpIntoLevel = summary?.xpIntoLevel ?? 0;
+  const xpToNext = summary?.xpToNext ?? 100;
+  const xpProgress = xpToNext > 0 ? xpIntoLevel / (xpIntoLevel + xpToNext) : 0;
+  const streak = summary?.longestStreak ?? longestStreakAcross(activeHabits);
+
+  const weekDays = useMemo<WeekDay[]>(() => {
+    const week = weekDates();
+    const todayIso = week.find((_, i) => i === new Date().getDay()) ?? week[0];
+    return week.map((iso, i) => {
+      let count = 0;
+      for (const h of activeHabits) {
+        if (checkinsByHabit[h.id]?.has(iso)) count += 1;
+      }
+      const ratio =
+        activeHabits.length === 0 ? 0 : count / activeHabits.length;
+      return {
+        label: WEEK_LABELS[i],
+        value: ratio,
+        done: ratio > 0,
+        today: iso === todayIso,
+      };
+    });
+  }, [activeHabits, checkinsByHabit]);
+
+  const activeWeekDays = weekDays.filter((d) => d.done).length;
 
   const momentum =
     goals.length === 0
@@ -39,6 +82,13 @@ export const Home = ({ state, dispatch, openGoal }: HomeProps) => {
       : Math.round(
           (goals.reduce((acc, g) => acc + g.progress, 0) / goals.length) * 100,
         );
+
+  const handleToggleHabit = useCallback(
+    (id: string) => {
+      void toggleCheckin(id).catch(() => undefined);
+    },
+    [toggleCheckin],
+  );
 
   return (
     <ScrollView
@@ -55,12 +105,12 @@ export const Home = ({ state, dispatch, openGoal }: HomeProps) => {
           }}
         >
           <View style={{ flex: 1 }}>
-            <Eyebrow style={{ marginBottom: 6 }}>TERÇA · 23 ABR</Eyebrow>
+            <Eyebrow style={{ marginBottom: 6 }}>{formatHeaderDate()}</Eyebrow>
             <H2 style={{ lineHeight: 30 }}>
               Bom dia, <Neon>{name}</Neon>
             </H2>
             <Body style={{ marginTop: 4, color: theme.ink[2] }}>
-              {todayDone}/{todayTotal} tarefas para hoje
+              {todayDone}/{todayTotal} hábitos para hoje
             </Body>
           </View>
           <IconButton icon="bell" size={40} iconSize={18} stroke={1.8}>
@@ -106,7 +156,7 @@ export const Home = ({ state, dispatch, openGoal }: HomeProps) => {
               <StatRow
                 label="Nível"
                 value={String(level)}
-                sub={`${xp} / ${xpToNext} XP`}
+                sub={`${xpIntoLevel} / ${xpIntoLevel + xpToNext} XP`}
                 pill={
                   <Chip accent>
                     <Mono
@@ -125,14 +175,22 @@ export const Home = ({ state, dispatch, openGoal }: HomeProps) => {
               <StatRow
                 label="Sequência"
                 value={`${streak}d`}
-                sub="Melhor: 31d"
+                sub={
+                  summary?.longestStreak
+                    ? `Recorde: ${summary.longestStreak}d`
+                    : 'Comece hoje'
+                }
                 emoji="🔥"
               />
               <View style={{ height: 1, backgroundColor: theme.border }} />
               <StatRow
                 label="XP Hoje"
-                value="+180"
-                sub="↑ 32% vs. ontem"
+                value={xpToday >= 0 ? `+${xpToday}` : `${xpToday}`}
+                sub={
+                  xpToday > 0
+                    ? 'Mantenha o ritmo'
+                    : 'Marque um hábito para somar'
+                }
                 icon="zap"
               />
             </View>
@@ -155,7 +213,7 @@ export const Home = ({ state, dispatch, openGoal }: HomeProps) => {
             >
               <Eyebrow>ESTA SEMANA</Eyebrow>
               <Mono style={{ fontSize: 12, color: theme.accent }}>
-                5/7 dias ativos
+                {activeWeekDays}/7 dias ativos
               </Mono>
             </View>
             <WeekBars days={weekDays} height={40} />
@@ -164,57 +222,53 @@ export const Home = ({ state, dispatch, openGoal }: HomeProps) => {
       </View>
 
       {/* ==== TODAY FOCUS ==== */}
-      <View style={{ paddingHorizontal: 20, paddingBottom: 24 }}>
-        <SectionHead
-          eyebrow="FOCO DE HOJE"
-          title="3 impulsos para agora"
-          action="Ver tudo"
-        />
-        <View style={{ gap: 10 }}>
-          <TodayItem
-            icon="run"
-            label="Correr 5km"
-            sub="Parque Ibirapuera · 30min"
-            done={todayDone >= 1}
-            onToggle={() => dispatch({ type: 'toggle', key: 'run' })}
-            chip="+50 XP"
+      {todayHabits.length > 0 ? (
+        <View style={{ paddingHorizontal: 20, paddingBottom: 24 }}>
+          <SectionHead
+            eyebrow="FOCO DE HOJE"
+            title={
+              todayHabits.length === 1
+                ? '1 impulso para agora'
+                : `${todayHabits.length} impulsos para agora`
+            }
+            action="Ver tudo"
           />
-          <TodayItem
-            icon="book"
-            label="Estudar React — 2 aulas"
-            sub="Curso Avançado · 45min"
-            done={todayDone >= 2}
-            onToggle={() => dispatch({ type: 'toggle', key: 'study' })}
-            chip="+80 XP"
-          />
-          <TodayItem
-            icon="sparkle"
-            label="Journal da noite"
-            sub="Reflexão + 3 gratidões"
-            done={todayDone >= 3}
-            onToggle={() => dispatch({ type: 'toggle', key: 'journal' })}
-            chip="+30 XP"
-          />
+          <View style={{ gap: 10 }}>
+            {todayHabits.map((h) => (
+              <TodayItem
+                key={h.id}
+                icon={habitIcon(h.icon)}
+                color={habitColor(h.color)}
+                label={h.title}
+                sub={h.description ?? `+${h.xpPerCheckin} XP por check-in`}
+                done={h.todayDone}
+                onToggle={() => handleToggleHabit(h.id)}
+                chip={`+${h.xpPerCheckin} XP`}
+              />
+            ))}
+          </View>
         </View>
-      </View>
+      ) : null}
 
       {/* ==== METAS ATIVAS ==== */}
-      <View style={{ paddingHorizontal: 20, paddingBottom: 24 }}>
-        <SectionHead
-          eyebrow="METAS ATIVAS"
-          title={`${goals.length} em progresso`}
-          action="Filtrar"
-        />
-        <View style={{ gap: 12 }}>
-          {goals.map((goal) => (
-            <GoalCard
-              key={goal.id}
-              goal={goal}
-              onPress={() => openGoal(goal.id)}
-            />
-          ))}
+      {goals.length > 0 ? (
+        <View style={{ paddingHorizontal: 20, paddingBottom: 24 }}>
+          <SectionHead
+            eyebrow="METAS ATIVAS"
+            title={`${goals.length} em progresso`}
+            action="Filtrar"
+          />
+          <View style={{ gap: 12 }}>
+            {goals.map((goal) => (
+              <GoalCard
+                key={goal.id}
+                goal={goal}
+                onPress={() => openGoal(goal.id)}
+              />
+            ))}
+          </View>
         </View>
-      </View>
+      ) : null}
 
       {/* ==== INSIGHT ==== */}
       <View style={{ paddingHorizontal: 20, paddingBottom: 12 }}>
@@ -225,7 +279,9 @@ export const Home = ({ state, dispatch, openGoal }: HomeProps) => {
             backgroundColor: theme.accentDim,
           }}
         >
-          <View style={{ flexDirection: 'row', gap: 14, alignItems: 'flex-start' }}>
+          <View
+            style={{ flexDirection: 'row', gap: 14, alignItems: 'flex-start' }}
+          >
             <View
               style={{
                 width: 36,
@@ -248,10 +304,20 @@ export const Home = ({ state, dispatch, openGoal }: HomeProps) => {
                 COACH INSIGHT
               </Eyebrow>
               <Body style={{ color: theme.ink[0] }}>
-                Você está{' '}
-                <Body style={{ fontFamily: 'Geist_600SemiBold' }}>3 dias</Body>{' '}
-                do seu recorde pessoal de sequência. Se mantiver até domingo,
-                desbloqueia a <Neon>medalha Inabalável</Neon>.
+                {streak > 0 ? (
+                  <>
+                    Você está em uma sequência de{' '}
+                    <Body style={{ fontFamily: 'Geist_600SemiBold' }}>
+                      {streak} dias
+                    </Body>
+                    . Mantenha o ritmo para fortalecer o hábito.
+                  </>
+                ) : (
+                  <>
+                    Comece um hábito hoje e ganhe seus primeiros XP. Pequenos
+                    passos viram <Neon>grandes mudanças</Neon>.
+                  </>
+                )}
               </Body>
             </View>
           </View>
@@ -294,7 +360,9 @@ const StatRow = ({ label, value, sub, pill, icon, emoji }: StatRowProps) => {
         >
           {label}
         </Small>
-        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+        <View
+          style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}
+        >
           <Mono
             style={{
               fontSize: 18,
@@ -310,9 +378,7 @@ const StatRow = ({ label, value, sub, pill, icon, emoji }: StatRowProps) => {
         </View>
       </View>
       {pill}
-      {!pill && emoji ? (
-        <Mono style={{ fontSize: 18 }}>{emoji}</Mono>
-      ) : null}
+      {!pill && emoji ? <Mono style={{ fontSize: 18 }}>{emoji}</Mono> : null}
       {!pill && !emoji && icon ? (
         <View
           style={{
@@ -333,6 +399,7 @@ const StatRow = ({ label, value, sub, pill, icon, emoji }: StatRowProps) => {
 
 type TodayItemProps = {
   icon: IconName;
+  color: string;
   label: string;
   sub: string;
   done: boolean;
@@ -340,7 +407,15 @@ type TodayItemProps = {
   onToggle: () => void;
 };
 
-const TodayItem = ({ icon, label, sub, done, chip, onToggle }: TodayItemProps) => {
+const TodayItem = ({
+  icon,
+  color,
+  label,
+  sub,
+  done,
+  chip,
+  onToggle,
+}: TodayItemProps) => {
   const { theme } = useTheme();
   return (
     <Pressable onPress={onToggle}>
@@ -350,7 +425,8 @@ const TodayItem = ({ icon, label, sub, done, chip, onToggle }: TodayItemProps) =
           flexDirection: 'row',
           alignItems: 'center',
           gap: 12,
-          opacity: done ? 0.55 : 1,
+          opacity: done ? 0.65 : 1,
+          borderColor: done ? color : theme.border,
         }}
       >
         <View
@@ -358,12 +434,12 @@ const TodayItem = ({ icon, label, sub, done, chip, onToggle }: TodayItemProps) =
             width: 40,
             height: 40,
             borderRadius: 12,
-            backgroundColor: done ? theme.accent : theme.glassStrong,
+            backgroundColor: done ? color : `${color}26`,
             borderWidth: 1,
-            borderColor: done ? theme.accent : theme.borderStrong,
+            borderColor: done ? color : theme.borderStrong,
             alignItems: 'center',
             justifyContent: 'center',
-            shadowColor: done ? theme.accent : 'transparent',
+            shadowColor: done ? color : 'transparent',
             shadowOpacity: done ? 0.45 : 0,
             shadowRadius: 14,
             shadowOffset: { width: 0, height: 0 },
@@ -373,7 +449,7 @@ const TodayItem = ({ icon, label, sub, done, chip, onToggle }: TodayItemProps) =
             name={done ? 'check' : icon}
             size={18}
             stroke={2}
-            color={done ? theme.accentInk : theme.ink[1]}
+            color={done ? theme.accentInk : color}
           />
         </View>
         <View style={{ flex: 1, minWidth: 0 }}>
@@ -383,10 +459,16 @@ const TodayItem = ({ icon, label, sub, done, chip, onToggle }: TodayItemProps) =
               fontFamily: 'Geist_600SemiBold',
               textDecorationLine: done ? 'line-through' : 'none',
             }}
+            numberOfLines={1}
           >
             {label}
           </Body>
-          <Small style={{ color: theme.ink[3], marginTop: 2 }}>{sub}</Small>
+          <Small
+            style={{ color: theme.ink[3], marginTop: 2 }}
+            numberOfLines={1}
+          >
+            {sub}
+          </Small>
         </View>
         <Chip>
           <Mono style={{ fontSize: 10, color: theme.ink[1] }}>{chip}</Mono>
@@ -465,9 +547,7 @@ const GoalCard = ({ goal, onPress }: GoalCardProps) => {
               {pct}
               <Mono style={{ fontSize: 11, color: theme.ink[3] }}>%</Mono>
             </Mono>
-            <Mono
-              style={{ fontSize: 9, color: theme.ink[3], marginTop: 2 }}
-            >
+            <Mono style={{ fontSize: 9, color: theme.ink[3], marginTop: 2 }}>
               {goal.deadline}
             </Mono>
           </View>
@@ -482,7 +562,14 @@ const GoalCard = ({ goal, onPress }: GoalCardProps) => {
             alignItems: 'center',
           }}
         >
-          <View style={{ flexDirection: 'row', gap: 6, flex: 1, flexWrap: 'wrap' }}>
+          <View
+            style={{
+              flexDirection: 'row',
+              gap: 6,
+              flex: 1,
+              flexWrap: 'wrap',
+            }}
+          >
             <Chip>
               <Icon name="clock" size={10} stroke={2} color={theme.ink[1]} />
               <Mono style={{ fontSize: 10, color: theme.ink[1] }}>
