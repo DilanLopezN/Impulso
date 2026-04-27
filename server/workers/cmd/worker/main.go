@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -10,8 +11,11 @@ import (
 	"syscall"
 	"time"
 
+	_ "github.com/jackc/pgx/v5/stdlib"
+
 	"github.com/dilanlopezn/impulso/server/workers/internal/config"
 	"github.com/dilanlopezn/impulso/server/workers/internal/httpserver"
+	"github.com/dilanlopezn/impulso/server/workers/internal/leaderboard"
 )
 
 func main() {
@@ -20,7 +24,27 @@ func main() {
 
 	cfg := config.Load()
 
-	srv := httpserver.New(cfg.HTTPAddr, logger)
+	db, err := sql.Open("pgx", cfg.DatabaseURL)
+	if err != nil {
+		logger.Error("failed to open postgres", "err", err)
+		os.Exit(1)
+	}
+	defer db.Close()
+
+	db.SetMaxOpenConns(25)
+	db.SetMaxIdleConns(10)
+	db.SetConnMaxLifetime(30 * time.Minute)
+
+	ctx, cancelPing := context.WithTimeout(context.Background(), 5*time.Second)
+	if err := db.PingContext(ctx); err != nil {
+		cancelPing()
+		logger.Error("failed to connect to postgres", "err", err)
+		os.Exit(1)
+	}
+	cancelPing()
+
+	repo := leaderboard.NewRepository(db)
+	srv := httpserver.New(cfg.HTTPAddr, logger, repo, cfg.InternalWorkerToken)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -36,8 +60,8 @@ func main() {
 	<-ctx.Done()
 	logger.Info("shutdown signal received")
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		logger.Error("graceful shutdown failed", "err", err)

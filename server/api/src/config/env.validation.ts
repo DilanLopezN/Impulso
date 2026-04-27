@@ -37,6 +37,24 @@ export class EnvSchema {
   @IsString()
   REDIS_URL?: string;
 
+  @IsOptional()
+  @IsString()
+  GO_WORKERS_BASE_URL?: string;
+
+  @IsOptional()
+  @IsString()
+  GO_WORKERS_TOKEN?: string;
+
+  @IsInt()
+  @Min(10_000)
+  @Max(86_400_000)
+  GO_WORKERS_CRON_INTERVAL_MS: number = 300000;
+
+  @IsInt()
+  @Min(0)
+  @Max(1)
+  GO_WORKERS_CRON_ENABLED: number = 1;
+
   @IsString()
   @MinLength(16)
   JWT_ACCESS_SECRET!: string;
