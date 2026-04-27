@@ -9,7 +9,9 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { AuthenticatedRequestUser } from '../auth/auth.types';
 import { ListLedgerQuery } from './dto/list-ledger.query';
+import { ListRankingsQuery } from './dto/list-rankings.query';
 import { GamificationService } from './gamification.service';
+import { RankingsBridgeService, type RankingListView } from './rankings-bridge.service';
 import type {
   AchievementView,
   ProfileSummaryView,
@@ -19,7 +21,10 @@ import type {
 @Controller()
 @UseGuards(JwtAuthGuard)
 export class GamificationController {
-  constructor(private readonly gamification: GamificationService) {}
+  constructor(
+    private readonly gamification: GamificationService,
+    private readonly rankingsBridge: RankingsBridgeService,
+  ) {}
 
   @Get('profile/summary')
   summary(
@@ -44,5 +49,13 @@ export class GamificationController {
     @CurrentUser() user: AuthenticatedRequestUser,
   ): Promise<AchievementView[]> {
     return this.gamification.listAchievements(user.userId);
+  }
+
+  @Get('rankings')
+  rankings(
+    @CurrentUser() user: AuthenticatedRequestUser,
+    @Query() query: ListRankingsQuery,
+  ): Promise<RankingListView> {
+    return this.rankingsBridge.list(user, query);
   }
 }
