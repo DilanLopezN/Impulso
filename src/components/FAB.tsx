@@ -31,7 +31,7 @@ export const FAB = ({ onPress, bottom }: FABProps) => {
         shadowRadius: 20,
         shadowOffset: { width: 0, height: 6 },
         elevation: 8,
-        transform: pressed ? [{ scale: 0.94 }] : undefined,
+        ...(pressed ? { transform: [{ scale: 0.94 }] } : {}),
       })}
     >
       <Icon name="plus" size={24} stroke={2.4} color={theme.accentInk} />

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/dilanlopezn/impulso/server/workers/internal/config"
 	"github.com/dilanlopezn/impulso/server/workers/internal/httpserver"
@@ -43,7 +44,23 @@ func main() {
 	}
 	cancelPing()
 
-	repo := leaderboard.NewRepository(db)
+	redisOptions, err := redis.ParseURL(cfg.RedisURL)
+	if err != nil {
+		logger.Error("failed to parse redis url", "err", err)
+		os.Exit(1)
+	}
+	redisClient := redis.NewClient(redisOptions)
+	defer redisClient.Close()
+
+	redisCtx, cancelRedisPing := context.WithTimeout(context.Background(), 5*time.Second)
+	if err := redisClient.Ping(redisCtx).Err(); err != nil {
+		cancelRedisPing()
+		logger.Error("failed to connect to redis", "err", err)
+		os.Exit(1)
+	}
+	cancelRedisPing()
+
+	repo := leaderboard.NewRepository(db, redisClient)
 	srv := httpserver.New(cfg.HTTPAddr, logger, repo, cfg.InternalWorkerToken)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

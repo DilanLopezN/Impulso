@@ -472,7 +472,7 @@ export const CreateHabitModal = ({ visible, onClose }: CreateHabitModalProps) =>
               shadowOpacity: 0.45,
               shadowRadius: 24,
               shadowOffset: { width: 0, height: 0 },
-              transform: pressed ? [{ scale: 0.97 }] : undefined,
+              ...(pressed ? { transform: [{ scale: 0.97 }] } : {}),
             })}
           >
             {submitting ? (

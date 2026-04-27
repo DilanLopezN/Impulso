@@ -336,7 +336,7 @@ const EmptyState = ({ onCreate }: { onCreate: () => void }) => {
             backgroundColor: theme.accent,
             borderRadius: 14,
             opacity: pressed ? 0.92 : 1,
-            transform: pressed ? [{ scale: 0.97 }] : undefined,
+            ...(pressed ? { transform: [{ scale: 0.97 }] } : {}),
           })}
         >
           <Body

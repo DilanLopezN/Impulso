@@ -3,8 +3,12 @@ package leaderboard
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"math"
 	"time"
+
+	"github.com/redis/go-redis/v9"
 )
 
 type Period string
@@ -21,6 +25,8 @@ const (
 	ScopeTeam    Scope = "team"
 )
 
+const redisGeneratedTTL = 2 * time.Hour
+
 var TieBreakers = []string{
 	"total_xp DESC",
 	"checkins_count DESC",
@@ -29,7 +35,8 @@ var TieBreakers = []string{
 }
 
 type Repository struct {
-	db *sql.DB
+	db    *sql.DB
+	redis *redis.Client
 }
 
 type SnapshotResult struct {
@@ -65,7 +72,18 @@ type ListResult struct {
 	Items       []Entry   `json:"items"`
 }
 
-func NewRepository(db *sql.DB) *Repository { return &Repository{db: db} }
+type redisEntryPayload struct {
+	UserID         string  `json:"userId"`
+	DisplayName    string  `json:"displayName"`
+	AvatarURL      *string `json:"avatarUrl,omitempty"`
+	TotalXP        int     `json:"totalXp"`
+	CheckinsCount  int     `json:"checkinsCount"`
+	LastActivityAt string  `json:"lastActivityAt"`
+}
+
+func NewRepository(db *sql.DB, redisClient *redis.Client) *Repository {
+	return &Repository{db: db, redis: redisClient}
+}
 
 func (r *Repository) RefreshSnapshots(ctx context.Context) ([]SnapshotResult, error) {
 	periods := []Period{PeriodWeekly, PeriodMonthly, PeriodAllTime}
@@ -155,6 +173,10 @@ func (r *Repository) refreshPeriod(ctx context.Context, period Period) (Snapshot
 		return SnapshotResult{}, err
 	}
 
+	if err := r.refreshRedisPeriod(ctx, period, generatedAt); err != nil {
+		// best effort cache refresh; DB snapshot remains canonical
+	}
+
 	affected, _ := result.RowsAffected()
 	return SnapshotResult{Period: period, GeneratedAt: generatedAt, Users: int(affected)}, nil
 }
@@ -182,6 +204,12 @@ func periodFilterSQL(period Period) periodFilter {
 }
 
 func (r *Repository) List(ctx context.Context, req ListRequest) (ListResult, error) {
+	if req.Scope == ScopeGlobal {
+		if cached, ok := r.listGlobalFromRedis(ctx, req); ok {
+			return cached, nil
+		}
+	}
+
 	var generatedAt time.Time
 	if err := r.db.QueryRowContext(ctx, `
 		SELECT generated_at
@@ -270,11 +298,147 @@ func (r *Repository) List(ctx context.Context, req ListRequest) (ListResult, err
 		return ListResult{}, err
 	}
 
-	return ListResult{
-		Period:      req.Period,
-		Scope:       req.Scope,
-		GeneratedAt: generatedAt,
-		TieBreakers: TieBreakers,
-		Items:       items,
-	}, nil
+	return ListResult{Period: req.Period, Scope: req.Scope, GeneratedAt: generatedAt, TieBreakers: TieBreakers, Items: items}, nil
+}
+
+func (r *Repository) refreshRedisPeriod(ctx context.Context, period Period, generatedAt time.Time) error {
+	if r.redis == nil {
+		return nil
+	}
+
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT e.position, e.user_id, u.display_name, u.avatar_url,
+		       e.total_xp, e.checkins_count, e.last_activity_at
+		FROM ranking_snapshot_entries e
+		INNER JOIN users u ON u.id = e.user_id
+		WHERE e.period = $1
+		  AND e.snapshot_generated_at = $2
+		  AND u.deleted_at IS NULL
+		ORDER BY e.position ASC
+	`, string(period), generatedAt)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	key := redisRankingKey(period)
+	metaKey := redisRankingMetaKey(period)
+	pipe := r.redis.TxPipeline()
+	pipe.Del(ctx, key, metaKey)
+
+	for rows.Next() {
+		var entry Entry
+		if err := rows.Scan(
+			&entry.Position,
+			&entry.UserID,
+			&entry.DisplayName,
+			&entry.AvatarURL,
+			&entry.TotalXP,
+			&entry.CheckinsCount,
+			&entry.LastActivityAt,
+		); err != nil {
+			return err
+		}
+
+		score := redisScore(entry.TotalXP, entry.CheckinsCount, entry.LastActivityAt, entry.UserID)
+		pipe.ZAdd(ctx, key, redis.Z{Score: score, Member: entry.UserID})
+
+		payload, err := json.Marshal(redisEntryPayload{
+			UserID:         entry.UserID,
+			DisplayName:    entry.DisplayName,
+			AvatarURL:      entry.AvatarURL,
+			TotalXP:        entry.TotalXP,
+			CheckinsCount:  entry.CheckinsCount,
+			LastActivityAt: entry.LastActivityAt.UTC().Format(time.RFC3339),
+		})
+		if err != nil {
+			return err
+		}
+		pipe.HSet(ctx, metaKey, entry.UserID, payload)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	pipe.Expire(ctx, key, redisGeneratedTTL)
+	pipe.Expire(ctx, metaKey, redisGeneratedTTL)
+	pipe.Set(ctx, redisGeneratedAtKey(period), generatedAt.UTC().Format(time.RFC3339), redisGeneratedTTL)
+	_, err = pipe.Exec(ctx)
+	return err
+}
+
+func (r *Repository) listGlobalFromRedis(ctx context.Context, req ListRequest) (ListResult, bool) {
+	if r.redis == nil {
+		return ListResult{}, false
+	}
+
+	generatedRaw, err := r.redis.Get(ctx, redisGeneratedAtKey(req.Period)).Result()
+	if err != nil {
+		return ListResult{}, false
+	}
+	generatedAt, err := time.Parse(time.RFC3339, generatedRaw)
+	if err != nil {
+		return ListResult{}, false
+	}
+
+	key := redisRankingKey(req.Period)
+	metaKey := redisRankingMetaKey(req.Period)
+	ids, err := r.redis.ZRevRange(ctx, key, int64(req.Offset), int64(req.Offset+req.Limit-1)).Result()
+	if err != nil || len(ids) == 0 {
+		return ListResult{}, false
+	}
+
+	payloads, err := r.redis.HMGet(ctx, metaKey, ids...).Result()
+	if err != nil {
+		return ListResult{}, false
+	}
+
+	items := make([]Entry, 0, len(ids))
+	for i, raw := range payloads {
+		text, ok := raw.(string)
+		if !ok || text == "" {
+			continue
+		}
+		var payload redisEntryPayload
+		if err := json.Unmarshal([]byte(text), &payload); err != nil {
+			continue
+		}
+		lastActivityAt, err := time.Parse(time.RFC3339, payload.LastActivityAt)
+		if err != nil {
+			continue
+		}
+		items = append(items, Entry{
+			Position:       req.Offset + i + 1,
+			UserID:         payload.UserID,
+			DisplayName:    payload.DisplayName,
+			AvatarURL:      payload.AvatarURL,
+			TotalXP:        payload.TotalXP,
+			CheckinsCount:  payload.CheckinsCount,
+			LastActivityAt: lastActivityAt,
+		})
+	}
+
+	return ListResult{Period: req.Period, Scope: ScopeGlobal, GeneratedAt: generatedAt, TieBreakers: TieBreakers, Items: items}, len(items) > 0
+}
+
+func redisRankingKey(period Period) string {
+	return fmt.Sprintf("ranking:%s:global:z", period)
+}
+
+func redisRankingMetaKey(period Period) string {
+	return fmt.Sprintf("ranking:%s:global:meta", period)
+}
+
+func redisGeneratedAtKey(period Period) string {
+	return fmt.Sprintf("ranking:%s:generatedAt", period)
+}
+
+func redisScore(totalXP, checkins int, lastActivityAt time.Time, userID string) float64 {
+	base := float64(totalXP) * 1_000_000_000_000
+	base += float64(checkins) * 1_000_000
+	base += float64(lastActivityAt.UTC().Unix())
+	if len(userID) > 0 {
+		base -= float64(userID[0]) / 10_000
+	}
+	return math.Max(base, 0)
 }
